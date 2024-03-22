@@ -1,3 +1,4 @@
 # Don't push .pkl files
 *.pkl
 *.out
+.ipynb_checkpoints/
