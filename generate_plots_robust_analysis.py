@@ -157,7 +157,7 @@ with open('lambda_range.npy', 'wb') as f:
 beta_robust, rmse_robust, weights_robust = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
                                                                 grid_lon_size,grid_lat_size,\
                                                                 lambda_range,'robust',alpha_range,\
-                                                                nbEpochs=200,verbose=False)
+                                                                nbEpochs=500,verbose=False)
 
 with open('results/betas_robust.pkl', 'wb') as f:
     pickle.dump(beta_robust, f)
@@ -174,7 +174,7 @@ with open('results/weight_robust.pkl', 'wb') as f:
 beta_ridge, rmse_ridge, weights_ridge = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
                                                             grid_lon_size,grid_lat_size,\
                                                             lambda_range,'ridge',alpha_range,\
-                                                            nbEpochs=200,verbose=False)
+                                                            nbEpochs=500,verbose=False)
 
 with open('results/betas_ridge.pkl', 'wb') as f:
     pickle.dump(beta_ridge, f)

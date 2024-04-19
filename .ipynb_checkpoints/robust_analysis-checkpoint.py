@@ -34,9 +34,19 @@ def train_ridge_regression(x,y,vars,lon_size,lat_size,models,lambda_,nbEpochs=10
                           
     # define optimizer
     optimizer = torch.optim.Adam([beta],lr=1e-3)
+
+    
+    # stopping criterion
+    criteria = torch.tensor(0.0)
+    criteria_tmp = torch.tensor(1.0) 
+    epoch = 0
             
     # --- optimization loop ---                
-    for epoch in torch.arange(nbEpochs):      
+    while (torch.abs(criteria - criteria_tmp) >= 1e-4) & (epoch <= nbEpochs):
+
+        # update criteria
+        criteria_tmp = criteria.clone()
+        epoch +=1
                       
         optimizer.zero_grad()
         ############### Define loss function ##############
@@ -58,9 +68,11 @@ def train_ridge_regression(x,y,vars,lon_size,lat_size,models,lambda_,nbEpochs=10
         
         if(verbose==True):
             if(epoch % 10 == 0):
-                print('Epoch ', epoch.detach().item(), 
+                print('Epoch ', epoch, 
                     ', loss=', loss.detach().item()
                     )
+
+        criteria = loss
     return beta.detach().clone()
 
 
@@ -83,19 +95,36 @@ def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,alpha_=1.0,nbEp
                           
     # define optimizer
     optimizer = torch.optim.Adam([beta],lr=1e-3)
+
+    # stopping criterion
+    criteria = torch.tensor(0.0)
+    criteria_tmp = torch.tensor(1.0) 
+    epoch = 0
             
     # --- optimization loop ---                
-    for epoch in torch.arange(nbEpochs):      
+    while (torch.abs(criteria - criteria_tmp) >= 1e-4) & (epoch <= nbEpochs):
+
+        # update criteria
+        criteria_tmp = criteria.clone()
+        epoch +=1
                       
         optimizer.zero_grad()
         ############### Define loss function ##############
                     
         # first term: ||Y - X - Rb ||
-        obj = torch.tensor(0.0)
-        for m in models:
-            obj += torch.exp((1/alpha_)*torch.mean((y[m] - torch.matmul(x[m],beta))**2)/vars[m])
+        # obj = torch.tensor(0.0)
+        # for m in models:
+        #     obj += torch.exp((1/alpha_)*torch.mean((y[m] - torch.matmul(x[m],beta))**2)/vars[m])
     
-        obj = alpha_*torch.log(obj)
+        # obj = alpha_*torch.log(obj)
+
+        ######### Test #####################
+        res = torch.zeros(len(models))
+        for idx_m, m in enumerate(models):
+            res[idx_m] = (1/alpha_)*torch.mean((y[m] - torch.matmul(x[m],beta))**2)/vars[m]
+        
+        obj = alpha_*torch.logsumexp(res,0)
+        ####################################
 
         obj += lambda_*torch.norm(beta,p=2)**2
                     
@@ -110,9 +139,10 @@ def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,alpha_=1.0,nbEp
         
         if(verbose==True):
             if(epoch % 10 == 0):
-                print('Epoch ', epoch.detach().item(), 
+                print('Epoch ', epoch, 
                     ', loss=', loss.detach().item()
                     )
+        criteria = loss
     return beta.detach().clone()
 
 
@@ -204,7 +234,7 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',a
     
     for idx_m, m in enumerate(x.keys()):
         beta[m], y_pred[m], y_test[m], weights_tmp = leave_one_out(m,x,y,vars,lon_size,lat_size,lambda_,method,alpha_,nbEpochs,verbose)
-        rmse[m] =  np.mean((y_test[m] - y_pred[m])**2)
+        rmse[m] =  np.mean((y_test[m] - y_pred[m])**2)/vars[m]
 
         nans_idx = np.where(np.isnan(x[m][0,:,:].ravel()))[0]
 
@@ -214,7 +244,7 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',a
                 weights[m_tmp] += (1/len(x.keys()))* weights_tmp[m_tmp]
 
         # print the rmse
-        print('RMSE on model ', m, ' : ', np.mean((y_pred[m] - y_test[m])**2))
+        print('RMSE on model ', m, ' : ', np.mean((y_pred[m] - y_test[m])**2)/vars[m])
 
     # create the function y=x
     minx = np.min(y_test[m])
@@ -299,6 +329,20 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',a
     ax.set_xticklabels(models, rotation=-90)
     plt.tight_layout()
     plt.savefig("results/weights_"+method+"_"+str(alpha_)+"_"+str(lambda_)+".eps", dpi=150)
+    plt.show()
+
+
+    ################# plot the rmse #################
+    fig, ax = plt.subplots()
+    models = list(x.keys()) 
+    rmse_plot = list(rmse.values()) 
+    ax.bar(models, rmse_plot,label='rmse')
+    ax.set_ylabel(r'LOO')
+    ax.set_title('LOO rmse')
+    ax.legend()
+    ax.set_xticklabels(models, rotation=-90)
+    plt.tight_layout()
+    plt.savefig("results/rmse_"+method+"_"+str(alpha_)+"_"+str(lambda_)+".eps", dpi=150)
     plt.show()
     
 
