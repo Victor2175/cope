@@ -3,3 +3,5 @@
 *.out
 .ipynb_checkpoints/
 data/
+*.mp4
+results/
