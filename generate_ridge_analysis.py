@@ -142,7 +142,7 @@ for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
         notnans_idx = np.where(np.isnan(x_predictor[m][i][0,:,:].ravel())==False)[0]
 
 
-lambda_range = np.array([0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0])
+lambda_range = np.array([0.0001,0.005,0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0])
 
 with open('lambda_range_ridge.npy', 'wb') as f:
     np.save(f, lambda_range)
