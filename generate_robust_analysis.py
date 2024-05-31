@@ -6,6 +6,7 @@ import os
 import netCDF4 as netcdf
 import skimage
 import numpy as np
+import torch 
 
 with open('ssp585_time_series.pkl', 'rb') as f:
     dic_ssp585 = pickle.load(f)
@@ -102,44 +103,64 @@ time_period = 33
 grid_lat_size = 36
 grid_lon_size = 72
 
+# y_forced_response = {}
+# x_predictor = {}
+
+# for idx_m,m in enumerate(dic_processed_ssp585.keys()):
+#     y_forced_response[m] = 0
+#     x_predictor[m] = 0
+    
+#     for idx_i, i in enumerate(dic_forced_response_ssp585[m].keys()):
+#         if idx_i ==0:
+#             y_forced_response[m] = dic_forced_response_ssp585[m][i][131:164]
+#             x_predictor[m] = dic_processed_ssp585[m][i][131:164,:,:]
+#         else:
+#             y_forced_response[m] = np.concatenate([y_forced_response[m],dic_forced_response_ssp585[m][i][131:164]])
+#             x_predictor[m] = np.concatenate([x_predictor[m], dic_processed_ssp585[m][i][131:164,:,:]],axis=0) 
+
+
 y_forced_response = {}
 x_predictor = {}
 
 for idx_m,m in enumerate(dic_processed_ssp585.keys()):
-    y_forced_response[m] = 0
-    x_predictor[m] = 0
-    
+    y_forced_response[m] = {}
+    x_predictor[m] = {}
+
     for idx_i, i in enumerate(dic_forced_response_ssp585[m].keys()):
-        if idx_i ==0:
-            y_forced_response[m] = dic_forced_response_ssp585[m][i][131:164]
-            x_predictor[m] = dic_processed_ssp585[m][i][131:164,:,:]
-        else:
-            y_forced_response[m] = np.concatenate([y_forced_response[m],dic_forced_response_ssp585[m][i][131:164]])
-            x_predictor[m] = np.concatenate([x_predictor[m], dic_processed_ssp585[m][i][131:164,:,:]],axis=0)    
+       
+        y_forced_response[m][i] = dic_forced_response_ssp585[m][i][131:164]
+        x_predictor[m][i] = dic_processed_ssp585[m][i][131:164,:,:]
 
 
 # compute the variance
 variance_processed_ssp585 = {}
 std_processed_ssp585 = {}
 for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
-    arr_tmp = np.zeros((len(dic_processed_ssp585[m].keys()),33))
+    variance_processed_ssp585[m] = {}
+    arr_tmp = np.zeros((len(dic_processed_ssp585[m].keys()),time_period))
+    
     for idx_i, i in enumerate(dic_processed_ssp585[m].keys()):
         arr_tmp[idx_i,:] = np.nanmean(dic_processed_ssp585[m][i][131:164,:,:],axis=(1,2))
-    variance_processed_ssp585[m] = np.mean(np.var(arr_tmp,axis=0))
-    std_processed_ssp585[m] = np.mean(np.std(arr_tmp,axis=0))
 
+    arr_tmp_values = np.zeros((len(dic_processed_ssp585[m].keys()),time_period))
+    for idx_i, i in enumerate(dic_processed_ssp585[m].keys()):
+        arr_tmp_values[idx_i,:] = (dic_forced_response_ssp585[m][i][131:164] - arr_tmp[idx_i,:])**2
 
-import torch 
+    variance_processed_ssp585[m] = torch.mean(torch.from_numpy(arr_tmp_values),axis=0)
+
 
 # Data preprocessing
 x_train = {}
 y_train = {}
 
 for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
-    x_train[m] = torch.from_numpy(np.nan_to_num(x_predictor[m]).reshape(x_predictor[m].shape[0],x_predictor[m].shape[1]*x_predictor[m].shape[2])).to(torch.float64)
-    y_train[m] = torch.from_numpy(np.nan_to_num(y_forced_response[m])).to(torch.float64)
-
-    nans_idx = np.where(np.isnan(x_predictor[m][0,:,:].ravel()))[0]
+    x_train[m] = {}
+    y_train[m] = {}
+    for idx_i, i in enumerate(dic_processed_ssp585[m].keys()):
+        x_train[m][i] = torch.from_numpy(np.nan_to_num(x_predictor[m][i]).reshape(time_period,grid_lon_size*grid_lat_size)).to(torch.float64)
+        y_train[m][i] = torch.from_numpy(np.nan_to_num(y_forced_response[m][i])).to(torch.float64)
+    
+        nans_idx = np.where(np.isnan(x_predictor[m][i][0,:,:].ravel()))[0]
 
 
 alpha_range = np.array([0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0,10000.0])
@@ -154,19 +175,19 @@ with open('lambda_range.npy', 'wb') as f:
 
 ################## Run the robust regression #############################
 
-beta_robust, rmse_robust, weights_robust = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
-                                                                grid_lon_size,grid_lat_size,\
-                                                                lambda_range,'robust',alpha_range,\
-                                                                nbEpochs=500,verbose=False)
+# beta_robust, rmse_robust, weights_robust = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
+#                                                                 grid_lon_size,grid_lat_size,\
+#                                                                 lambda_range,'robust',alpha_range,\
+#                                                                 nbEpochs=100,verbose=False)
 
-with open('results/betas_robust.pkl', 'wb') as f:
-    pickle.dump(beta_robust, f)
+# with open('results/betas_robust.pkl', 'wb') as f:
+#     pickle.dump(beta_robust, f)
 
-with open('results/rmse_robust.pkl', 'wb') as f:
-    pickle.dump(rmse_robust, f)
+# with open('results/rmse_robust.pkl', 'wb') as f:
+#     pickle.dump(rmse_robust, f)
 
-with open('results/weight_robust.pkl', 'wb') as f:
-    pickle.dump(weights_robust, f)
+# with open('results/weight_robust.pkl', 'wb') as f:
+#     pickle.dump(weights_robust, f)
 
 
 ################### Run the ridge regressions #################################
@@ -174,7 +195,7 @@ with open('results/weight_robust.pkl', 'wb') as f:
 beta_ridge, rmse_ridge, weights_ridge = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
                                                             grid_lon_size,grid_lat_size,\
                                                             lambda_range,'ridge',alpha_range,\
-                                                            nbEpochs=500,verbose=False)
+                                                            nbEpochs=100,verbose=False)
 
 with open('results/betas_ridge.pkl', 'wb') as f:
     pickle.dump(beta_ridge, f)
