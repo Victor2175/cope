@@ -81,7 +81,7 @@ def train_ridge_regression(x,y,vars,lon_size,lat_size,models,lambda_,nbEpochs=10
     return beta.detach().clone()
 
 
-def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,alpha_=1.0,nbEpochs=100,verbose=True):
+def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,alpha_=1.0,nbEpochs=300,verbose=True):
     """
     Learn parameter β such that β = argmin( log Σ_m exp(||y_m - X_m^T β||^2) ).
 
@@ -174,10 +174,11 @@ def compute_weights(x,y,vars,beta,lon_size,lat_size,models,alpha_):
         for idx_i, i in enumerate(x[m].keys()):
             res[idx_m,:] += (y[m][i] - torch.matmul(x[m][i],beta))**2/vars[m]
         res[idx_m,:] = res[idx_m,:]/len(x[m].keys())
-        gamma[idx_m] = torch.exp((1/alpha_)*torch.mean(res[idx_m,:],axis=0))
+        gamma[idx_m] = (1/alpha_)*torch.mean(res[idx_m,:],axis=0)
 
-    gamma = gamma /torch.sum(gamma)
-    
+
+    gamma = torch.nn.functional.softmax(gamma)
+
     # plot the model contributions
     weights = {m: gamma[idx_m].item() for idx_m,m in enumerate(models)}
 
@@ -308,8 +309,6 @@ def cross_validation_loo(x,y,vars,lon_size,lat_size,lambda_range,method='robust'
 
     if method != 'robust':
         alpha_range_tmp = np.array([1.0])
-    
-    # for each pair (alpha, lambda) perform validation
     
     # for each lambda:
     for idx_lambda, lambda_ in enumerate(lambda_range):
