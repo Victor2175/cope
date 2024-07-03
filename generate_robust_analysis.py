@@ -147,7 +147,8 @@ for idx_m,m in enumerate(x_predictor.keys()):
     for idx_i, i in enumerate(x_predictor[m].keys()):
         arr_tmp_values[idx_i,:] = (y_forced_response[m][i] - arr_tmp[idx_i,:])**2
 
-    variance_processed_ssp585[m] = torch.nanmean(torch.from_numpy(arr_tmp_values),axis=0)
+    # variance_processed_ssp585[m] = torch.nanmean(torch.from_numpy(arr_tmp_values),axis=0)
+    variance_processed_ssp585[m] = torch.mean(torch.nanmean(torch.from_numpy(arr_tmp_values),axis=0))
 
 
 # Data preprocessing
@@ -162,46 +163,50 @@ for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
         y_train[m][i] = torch.from_numpy(y_forced_response[m][i]).to(torch.float64)
 
 
-alpha_range = np.array([0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0,10000.0])
-lambda_range = np.array([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0,10000.0])
+mu_range = np.array([0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0])
+lambda_range = np.array([0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0])
 
 
-with open('alpha_range.npy', 'wb') as f:
-    np.save(f, alpha_range)
+
+with open('mu_range.npy', 'wb') as f:
+    np.save(f, mu_range)
 
 with open('lambda_range.npy', 'wb') as f:
     np.save(f, lambda_range)
 
 ################## Run the robust regression #############################
 
-beta_robust, rmse_robust, weights_robust = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
-                                                                grid_lon_size,grid_lat_size,\
-                                                                lambda_range,'robust',alpha_range,\
-                                                                nbEpochs=200,verbose=False)
+beta_robust, rmse_robust, weights_robust, training_loss_robust = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
+                                                                    grid_lon_size,grid_lat_size,\
+                                                                    lambda_range,'robust',mu_range,\
+                                                                    nbEpochs=300,verbose=False)
 
-with open('results/betas_robust.pkl', 'wb') as f:
+with open('beta_robust.pkl', 'wb') as f:
     pickle.dump(beta_robust, f)
 
-with open('results/rmse_robust.pkl', 'wb') as f:
+with open('rmse_robust.pkl', 'wb') as f:
     pickle.dump(rmse_robust, f)
 
-with open('results/weight_robust.pkl', 'wb') as f:
+with open('weight_robust.pkl', 'wb') as f:
     pickle.dump(weights_robust, f)
+
+with open('training_loss_robust.pkl', 'wb') as f:
+    pickle.dump(training_loss_robust, f)
 
 
 ################### Run the ridge regressions #################################
 
 # beta_ridge, rmse_ridge, weights_ridge = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
 #                                                             grid_lon_size,grid_lat_size,\
-#                                                             lambda_range,'ridge',alpha_range,\
-#                                                             nbEpochs=100,verbose=False)
+#                                                             lambda_range,'ridge',mu_range,\
+#                                                             nbEpochs=200,verbose=False)
 
-# with open('results/betas_ridge.pkl', 'wb') as f:
+# with open('beta_ridge.pkl', 'wb') as f:
 #     pickle.dump(beta_ridge, f)
 
-# with open('results/rmse_ridge.pkl', 'wb') as f:
+# with open('rmse_ridge.pkl', 'wb') as f:
 #     pickle.dump(rmse_ridge, f)
 
-# with open('results/weights_ridge.pkl', 'wb') as f:
+# with open('weights_ridge.pkl', 'wb') as f:
 #     pickle.dump(weights_ridge, f)
         
