@@ -88,17 +88,19 @@ for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
     dic_processed_ssp585[m] = dic_reduced_ssp585[m].copy()
     
     mean_ref_ensemble = 0
+    y_tmp = np.zeros((len(dic_reduced_ssp585[m].keys()),time_period, lat_size*lon_size))
+    
     for idx_i, i in enumerate(dic_reduced_ssp585[m].keys()):
-        y_tmp = dic_reduced_ssp585[m][i][131:164,:,:].copy().reshape(time_period, lat_size*lon_size)
-        y_tmp[:,nan_idx] = float('nan')
-
+        y_tmp[idx_i,:,:] = dic_reduced_ssp585[m][i][131:164,:,:].copy().reshape(time_period, lat_size*lon_size)
+        y_tmp[idx_i,:,nan_idx] = float('nan')
+           
         if idx_i == 0:
-            mean_ref_ensemble = np.nanmean(y_tmp,axis=0)/ len(dic_processed_ssp585[m].keys())
+            mean_ref_ensemble = np.nanmean(y_tmp[idx_i,:,:],axis=0)/ len(dic_reduced_ssp585[m].keys())
         else:
-            mean_ref_ensemble += np.nanmean(y_tmp,axis=0)/ len(dic_processed_ssp585[m].keys())
+            mean_ref_ensemble += np.nanmean(y_tmp[idx_i,:,:],axis=0)/ len(dic_reduced_ssp585[m].keys())
 
     for idx_i, i in enumerate(dic_processed_ssp585[m].keys()):
-        dic_processed_ssp585[m][i] = y_tmp - mean_ref_ensemble
+        dic_processed_ssp585[m][i] = y_tmp[idx_i,:,:] - mean_ref_ensemble
 
 
 # compute the forced response
@@ -117,7 +119,7 @@ for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
         else:
             mean_spatial_ensemble += np.nanmean(y_tmp,axis=1)/ len(dic_forced_response_ssp585[m].keys())
 
-    for idx_i, i in enumerate(dic_forced_response_ssp585[m].keys()):        
+    for idx_i, i in enumerate(dic_forced_response_ssp585[m].keys()):  
         dic_forced_response_ssp585[m][i] = mean_spatial_ensemble - np.nanmean(mean_spatial_ensemble)
 
 y_forced_response = {}
@@ -163,15 +165,13 @@ for idx_m,m in enumerate(dic_reduced_ssp585.keys()):
         y_train[m][i] = torch.from_numpy(y_forced_response[m][i]).to(torch.float64)
 
 
-mu_range = np.array([0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0])
-lambda_range = np.array([0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0])
+mu_range = np.array([0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0])
+lambda_range = np.array([1.0, 50.0, 100.0, 150.0, 200.0, 300.0,400.0,500.0, 600.0, 700.0, 1000.0, 1250.0])
 
-
-
-with open('mu_range.npy', 'wb') as f:
+with open('mu_range_bis.npy', 'wb') as f:
     np.save(f, mu_range)
 
-with open('lambda_range.npy', 'wb') as f:
+with open('lambda_range_bis.npy', 'wb') as f:
     np.save(f, lambda_range)
 
 ################## Run the robust regression #############################
@@ -196,17 +196,20 @@ with open('training_loss_robust.pkl', 'wb') as f:
 
 ################### Run the ridge regressions #################################
 
-# beta_ridge, rmse_ridge, weights_ridge = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
-#                                                             grid_lon_size,grid_lat_size,\
-#                                                             lambda_range,'ridge',mu_range,\
-#                                                             nbEpochs=200,verbose=False)
+beta_ridge, rmse_ridge, weights_ridge, training_loss_ridge = cross_validation_loo(x_predictor,y_forced_response,variance_processed_ssp585,\
+                                                            grid_lon_size,grid_lat_size,\
+                                                            lambda_range,'ridge',mu_range,\
+                                                            nbEpochs=300,verbose=False)
 
-# with open('beta_ridge.pkl', 'wb') as f:
-#     pickle.dump(beta_ridge, f)
+with open('beta_ridge.pkl', 'wb') as f:
+    pickle.dump(beta_ridge, f)
 
-# with open('rmse_ridge.pkl', 'wb') as f:
-#     pickle.dump(rmse_ridge, f)
+with open('rmse_ridge.pkl', 'wb') as f:
+    pickle.dump(rmse_ridge, f)
 
-# with open('weights_ridge.pkl', 'wb') as f:
-#     pickle.dump(weights_ridge, f)
+with open('weights_ridge.pkl', 'wb') as f:
+    pickle.dump(weights_ridge, f)
+
+with open('training_loss_ridge.pkl', 'wb') as f:
+    pickle.dump(training_loss_ridge, f)
         
