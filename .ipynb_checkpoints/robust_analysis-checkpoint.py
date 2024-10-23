@@ -78,7 +78,23 @@ def train_ridge_regression(x,y,vars,lon_size,lat_size,models,lambda_,nbEpochs=10
                     )
 
         criteria = loss
-    return beta.detach().clone()
+
+    # compute the alphas of the robust model
+    M = len(x.keys())
+    alpha = torch.zeros(M)
+    res = torch.zeros(M,33)
+    
+    # compute the training loss for each model
+    model_loss = {}
+    
+    for idx_m,m in enumerate(x.keys()):
+        for idx_i, i in enumerate(x[m].keys()):
+            res[idx_m,:] += (y[m][i] - torch.matmul(x[m][i],beta))**2/vars[m]
+            
+        res[idx_m,:] = res[idx_m,:]/len(x[m].keys())
+        model_loss[m] = torch.mean(res[idx_m,:])
+        
+    return beta.detach().clone(), model_loss
 
 
 def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,mu_=1.0,nbEpochs=300,verbose=True):
@@ -114,24 +130,9 @@ def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,mu_=1.0,nbEpoch
         criteria_tmp = criteria.clone()
                       
         optimizer.zero_grad()
-        ############### Define loss function ##############
-                    
-        # first term: ||Y - X - Rb ||
-        # obj = torch.tensor(0.0)
-        # for m in models:
-        #     obj += torch.exp((1/mu_)*torch.mean((y[m] - torch.matmul(x[m],beta))**2)/vars[m])
-    
-        # obj = mu_*torch.log(obj)
-
-        ######### Test #####################
-        # res = torch.zeros(len(models))
-        # for idx_m, m in enumerate(models):
-        #     res[idx_m] = (1/mu_)*torch.mean((y[m] - torch.matmul(x[m],beta))**2)/vars[m]
         
-        # obj = mu_*torch.logsumexp(res,0)
-        ####################################
-
-        ######### Test #####################
+        ############### Define loss function ##############
+                
         res = torch.zeros(len(models),33)
 
         for idx_m, m in enumerate(models):
@@ -143,7 +144,7 @@ def train_robust_model(x,y,vars,lon_size,lat_size,models,lambda_,mu_=1.0,nbEpoch
 
         obj += lambda_*torch.norm(beta,p=2)**2
                     
-        #define loss function
+        # define loss function
         loss = obj
 
         # set the training loss
@@ -251,10 +252,15 @@ def leave_one_out(model_out,x,y,vars,lon_size,lat_size,lambda_,method='robust',m
             if m != model_out:
                 training_loss[idx_m] = model_loss[m]
     else:
-        beta = train_ridge_regression(x_train,y_train,vars,\
+        beta, model_loss = train_ridge_regression(x_train,y_train,vars,\
                                     lon_size,lat_size,\
                                     selected_models,\
                                     lambda_,nbEpochs,verbose)
+
+        # set training loss
+        for idx_m,m in enumerate(x.keys()):
+            if m != model_out:
+                training_loss[idx_m] = model_loss[m]
 
     y_pred={}
     for idx_i, i in enumerate(x[model_out].keys()):
