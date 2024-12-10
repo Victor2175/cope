@@ -280,7 +280,10 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',m
     beta = {}
     y_pred = {}
     y_test = {}
-    rmse = {}
+    rmse_mean = {}
+    rmse_q95 = {}
+    rmse_worst = {}
+    
     weights = {m: 0.0 for idx_m, m in enumerate(x.keys())}
     training_loss = {m: np.zeros(len(x.keys())) for idx_m, m in enumerate(x.keys())}
     
@@ -288,10 +291,16 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',m
         
         beta[m], y_pred[m], y_test[m], weights_tmp, training_loss[m] = leave_one_out(m,x,y,vars,lon_size,lat_size,lambda_,method,mu_,nbEpochs,verbose)
 
-        rmse[m] = 0
+        rmse_mean[m] = 0
+        err_tmp = np.zeros(len(x[m].keys()))
+        
         for idx_i, i in enumerate(x[m].keys()):
-            rmse[m] += np.mean(((y_test[m][i] - y_pred[m][i])**2/vars[m]).detach().numpy())
-        rmse[m] = rmse[m]/len(x[m].keys())
+            rmse_mean[m] += np.mean(((y_test[m][i] - y_pred[m][i])**2/vars[m]).detach().numpy())
+            err_tmp[idx_i] = np.mean(((y_test[m][i] - y_pred[m][i])**2/vars[m]).detach().numpy())
+            
+        rmse_mean[m] = rmse_mean[m]/len(x[m].keys())
+        rmse_q95[m] = np.quantile(err_tmp,0.95)
+        rmse_worst[m] = np.max(err_tmp)
             
         # compute the weight when a single model is out 
         if method == 'robust':    
@@ -300,7 +309,9 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',m
                     weights[m_tmp] += (1/(len(x.keys())))* weights_tmp[m_tmp]
 
         # print the rmse
-        print('RMSE on model ', m, ' : ', rmse[m])
+        print('RMSE (mean) on model ', m, ' : ', rmse_mean[m])
+        print('RMSE (95%) on model ', m, ' : ', rmse_q95[m])
+        print('RMSE (worst) on model ', m, ' : ', rmse_worst[m])
 
     
     ################# plot the weights #################
@@ -319,7 +330,7 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',m
     ################# plot the rmse #################
     fig, ax = plt.subplots()
     models = list(x.keys()) 
-    rmse_plot = list(rmse.values()) 
+    rmse_plot = list(rmse_mean.values()) 
     ax.bar(models, rmse_plot,label='rmse')
     ax.set_ylabel(r'LOO')
     ax.set_title('LOO rmse')
@@ -330,7 +341,7 @@ def leave_one_out_procedure(x,y,vars,lon_size,lat_size,lambda_,method='robust',m
     plt.show()
     
 
-    return beta, rmse, weights, training_loss
+    return beta, rmse_mean, rmse_q95, rmse_worst, weights, training_loss
 
 
 def cross_validation_loo(x,y,vars,lon_size,lat_size,lambda_range,method='robust',mu_range=np.array([0.1,1.0,10.0]),nbEpochs=500,verbose=True):
