@@ -19,11 +19,11 @@ with open('data/ssp585_time_series.pkl', 'rb') as f:
     data = pickle.load(f)
 
 # define range of values
-mu_range_tmp = np.array([0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0])
-lambda_range_tmp = np.array([0.01,0.1,0.5, 1.0,10.0,100.0, 200.0, 300.0])
+mu_range_tmp = np.array([0.001, 0.01, 0.1, 1.0, 10.0, 100.0])
+lambda_range_tmp = np.array([0.01,0.1, 1.0,10.0,100.0])
 
-mu_range_tmp = np.array([1.0])
-lambda_range_tmp = np.array([100.0])
+# mu_range_tmp = np.array([1.0])
+# lambda_range_tmp = np.array([100.0])
 
 with open('data/mu_range.npy', 'wb') as f:
     np.save(f, mu_range_tmp)
@@ -38,7 +38,7 @@ lon_size = lon_grid.shape[1]
 
 
 ##################### Preprocess data : get x and y 
-data_processed, notnan_idx, nan_idx = data_processing(data, lon, lat)
+data_processed, notnan_idx, nan_idx = data_processing(data, lon, lat, max_nb_models=100)
 x = compute_anomalies(data_processed, lon_size, lat_size, nan_idx, time_period=33)
 y = compute_forced_response(data_processed, lon_size, lat_size, nan_idx, time_period=33)
 vars = compute_variance(x, lon_size, lat_size, nan_idx, time_period=33)
@@ -57,7 +57,7 @@ x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
 ########################### get ridge regressor W
 w_ridge, rmse_ridge, training_loss_ridge, weights_ridge = \
 cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
-                            lr=0.00001,nb_gradient_iterations=2,time_period=33,\
+                            lr=0.00001,nb_gradient_iterations=30,time_period=33,\
                             rank=5,lambda_range=lambda_range_tmp,method='ridge',mu_range=mu_range_tmp,verbose=True)
 
 ### save files
@@ -76,8 +76,8 @@ with open('results/ridge/training_loss_ridge.pkl', 'wb') as f:
 ########################## get ridge regressor W low-rank
 w_ridge_lr, rmse_ridge_lr, training_loss_ridge_lr, weights_ridge_lr = \
 cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
-                            lr=0.00001,nb_gradient_iterations=2,time_period=33,\
-                            rank=5,lambda_range=lambda_range_tmp,method='ridge-lr',mu_range=mu_range_tmp,verbose=True)
+                            lr=0.00001,nb_gradient_iterations=30,time_period=33,\
+                            rank=10,lambda_range=lambda_range_tmp,method='ridge-lr',mu_range=mu_range_tmp,verbose=True)
 
 
 ### save files
@@ -98,7 +98,7 @@ with open('results/ridge_low_rank/training_loss_ridge_lr.pkl', 'wb') as f:
 ############################# get robust regressor W 
 w_robust, rmse_robust, training_loss_robust, weights_robust = \
 cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
-                            lr=0.00001,nb_gradient_iterations=2,time_period=33,\
+                            lr=0.000001,nb_gradient_iterations=100,time_period=33,\
                             rank=None,lambda_range=lambda_range_tmp,method='robust',mu_range=mu_range_tmp,verbose=True)
 
 ### save files
@@ -118,7 +118,7 @@ with open('results/robust/training_loss_robust.pkl', 'wb') as f:
 ### get robust regressor W low-rank
 w_robust_lr, rmse_robust_lr, training_loss_robust_lr, weights_robust_lr = \
 cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
-                            lr=0.00001,nb_gradient_iterations=2,time_period=33,\
+                            lr=0.000001,nb_gradient_iterations=100,time_period=33,\
                             rank=10,lambda_range=lambda_range_tmp,method='robust-lr',mu_range=mu_range_tmp,verbose=True)
 
 

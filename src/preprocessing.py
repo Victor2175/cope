@@ -7,7 +7,7 @@ import torch
 import netCDF4 as netcdf
 
 
-def data_processing(data,longitude,latitude,max_nb_models = 10):
+def data_processing(data,longitude,latitude,max_nb_models = 15):
     """ Process the data: statically relevant climate models (nb_runs > 3),
                             upscaling (from 0.25 to 0.5), 
                             cropping (remove latitude > 60),
