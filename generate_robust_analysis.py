@@ -178,10 +178,10 @@ with open('lambda_range_worst_removed.npy', 'wb') as f:
 ############################### filter out the worst model ################################
 worst_model = 'FIO-ESM-2-0'
 
-x_train.pop(worst_model)
-x_predictor.pop(worst_model)
-y_train.pop(worst_model)
-y_forced_response.pop(worst_model)
+#x_train.pop(worst_model)
+#x_predictor.pop(worst_model)
+#y_train.pop(worst_model)
+#y_forced_response.pop(worst_model)
 
 ################## Run the robust regression #############################
 
@@ -190,16 +190,16 @@ beta_robust, rmse_robust, weights_robust, training_loss_robust = cross_validatio
                                                                     lambda_range,'robust',mu_range,\
                                                                     nbEpochs=200,verbose=False)
 
-with open('results/beta_robust_worst_removed.pkl', 'wb') as f:
+with open('results/beta_robust_tmp.pkl', 'wb') as f:
     pickle.dump(beta_robust, f)
 
-with open('results/rmse_robust_worst_removed.pkl', 'wb') as f:
+with open('results/rmse_robust_tmp.pkl', 'wb') as f:
     pickle.dump(rmse_robust, f)
 
-with open('results/weight_robust_worst_removed.pkl', 'wb') as f:
+with open('results/weight_robust_tmp.pkl', 'wb') as f:
     pickle.dump(weights_robust, f)
 
-with open('results/training_loss_robust_worst_removed.pkl', 'wb') as f:
+with open('results/training_loss_robust_tmp.pkl', 'wb') as f:
     pickle.dump(training_loss_robust, f)
 
 
@@ -210,15 +210,15 @@ beta_ridge, rmse_ridge, weights_ridge, training_loss_ridge = cross_validation_lo
                                                             lambda_range,'ridge',mu_range,\
                                                             nbEpochs=200,verbose=False)
 
-with open('results/beta_ridge_worst_removed.pkl', 'wb') as f:
+with open('results/beta_ridge_tmp.pkl', 'wb') as f:
     pickle.dump(beta_ridge, f)
 
-with open('results/rmse_ridge_worst_removed.pkl', 'wb') as f:
+with open('results/rmse_ridge_worst_tmp.pkl', 'wb') as f:
     pickle.dump(rmse_ridge, f)
 
-with open('results/weights_ridge_worst_removed.pkl', 'wb') as f:
+with open('results/weights_ridge_tmp.pkl', 'wb') as f:
     pickle.dump(weights_ridge, f)
 
-with open('results/training_loss_ridge_worst_removed.pkl', 'wb') as f:
+with open('results/training_loss_ridge_tmp.pkl', 'wb') as f:
     pickle.dump(training_loss_ridge, f)
         
