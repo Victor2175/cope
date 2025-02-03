@@ -5,7 +5,7 @@ from leave_one_out import leave_one_out_procedure
 def cross_validation_procedure(x,y,vars,\
                                lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
                                method='ridge', rank=None, lambda_range=torch.tensor([1.0]), mu_range=torch.tensor([1.0]),\
-                               lr=0.00001,nb_gradient_iterations=20,,verbose=True):
+                               lr=1e-5,nb_gradient_iterations=20,verbose=True):
     """
     Cross validation procedure: LOO--> for a given model, train the ridge regression on all runs except one, and test on this one.
 

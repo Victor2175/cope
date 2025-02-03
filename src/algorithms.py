@@ -225,11 +225,7 @@ def compute_weights(models,w,x,y,notnan_idx,lambda_=1.0,mu_=1.0):
     
     for idx_m,m in enumerate(models):
         
-        for idx_r, r in enumerate(x[m].keys()):
-            
-            res[idx_m] += torch.sum((y[m][r][:,notnan_idx] - x[m][r][:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)] )**2)
-
-        res[idx_m] = res[idx_m]/len(x[m].keys())
+        res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2)
         alpha[idx_m] = (1/mu_)*res[idx_m]
 
     # softmax function to compute weights $\alpha$

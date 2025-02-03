@@ -43,14 +43,12 @@ def leave_one_out_single(model_out,x,y,vars,\
     rmse_train = {}
 
     for idx_m,m in enumerate(x.keys()):
+        
         if m != model_out:
-            y_pred_train[m] = {}
-            rmse_train[m] = 0.0
-            for idx_r, r in enumerate(x[m].keys()):
-                y_pred_train[m][r] = torch.zeros(time_period,lon_size*lat_size).to(torch.float64)
-                y_pred_train[m][r][:,notnan_idx] =  x[m][r][:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)].to(torch.float64)
-                rmse_train[m] += torch.nanmean((y_pred_train[m][r] - y[m][r])**2)
-            rmse_train[m] = rmse_train[m] /len(x[m].keys())
+
+            y_pred_train[m] = torch.zeros(x[m].shape[0],time_period,lon_size*lat_size).to(torch.float64)
+            y_pred_train[m][:,:,notnan_idx] =  x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)].to(torch.float64)
+            rmse_train[m] = torch.nanmean((y_pred_train[m] - y[m])**2)
 
 
     # compute the weights
