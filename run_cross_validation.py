@@ -9,7 +9,7 @@ import numpy as np
 import pickle
 from preprocessing import data_processing, compute_anomalies, extract_longitude_latitude, \
                             compute_forced_response, compute_variance, \
-                            merge_runs, numpy_to_torch, standardize, build_training_and_test_sets
+                            merge_runs, stack_runs, numpy_to_torch, standardize, build_training_and_test_sets
 
 from cross_validation import cross_validation_procedure
 
@@ -38,7 +38,7 @@ lon_size = lon_grid.shape[1]
 
 
 ##################### Preprocess data : get x and y 
-data_processed, notnan_idx, nan_idx = data_processing(data, lon, lat, max_nb_models=100)
+data_processed, notnan_idx, nan_idx = data_processing(data, lon, lat, max_models=100)
 x = compute_anomalies(data_processed, lon_size, lat_size, nan_idx, time_period=33)
 y = compute_forced_response(data_processed, lon_size, lat_size, nan_idx, time_period=33)
 vars = compute_variance(x, lon_size, lat_size, nan_idx, time_period=33)
@@ -59,8 +59,9 @@ w_ridge, rmse_ridge, training_loss_ridge, weights_ridge = \
 cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
                             lr=0.00001,nb_gradient_iterations=30,time_period=33,\
                             rank=5,lambda_range=lambda_range_tmp,method='ridge',mu_range=mu_range_tmp,verbose=True)
+                           
 
-### save files
+# ### save files
 with open('results/ridge/w_ridge.pkl', 'wb') as f:
     pickle.dump(w_ridge, f)
 
@@ -80,7 +81,7 @@ cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
                             rank=10,lambda_range=lambda_range_tmp,method='ridge-lr',mu_range=mu_range_tmp,verbose=True)
 
 
-### save files
+# ### save files
 with open('results/ridge_low_rank/w_ridge_lr.pkl', 'wb') as f:
     pickle.dump(w_ridge_lr, f)
 
@@ -101,7 +102,7 @@ cross_validation_procedure(x,y,vars,lon_size,lat_size,notnan_idx,nan_idx,\
                             lr=0.000001,nb_gradient_iterations=100,time_period=33,\
                             rank=None,lambda_range=lambda_range_tmp,method='robust',mu_range=mu_range_tmp,verbose=True)
 
-### save files
+# ### save files
 with open('results/robust/w_robust.pkl', 'wb') as f:
     pickle.dump(w_robust, f)
 

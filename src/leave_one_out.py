@@ -4,10 +4,10 @@ import numpy as np
 from algorithms import ridge_regression, ridge_regression_low_rank, train_robust_weights_model, compute_weights
 
 def leave_one_out_single(model_out,x,y,vars,\
-                         lon_size,lat_size,notnan_idx,nan_idx,\
-                         lr=0.0001,nb_gradient_iterations=50,\
-                         time_period=33,rank=5,\
-                         lambda_=1.0,method='ridge',mu_=1.0,verbose=True):
+                         lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
+                         method='ridge',rank=5,lambda_=1.0,mu_=1.0,\
+                         lr=1e-5,nb_gradient_iterations=50,verbose=True):
+    
     """Run a single iteration the leave-one-out procedure (LOO) with model_out out of the training set.
 
         Args:
@@ -64,9 +64,9 @@ def leave_one_out_single(model_out,x,y,vars,\
 
 
 def leave_one_out_procedure(x,y,vars,\
-                            lon_size,lat_size, notnan_idx,nan_idx,\
-                            lr=0.00001,nb_gradient_iterations=20,time_period=33,\
-                            rank=5,lambda_=1.0,method='ridge',mu_=1.0,verbose=True):
+                            lon_size,lat_size, notnan_idx, nan_idx,time_period=33,\
+                            method='ridge',rank=None,lambda_=1.0,mu_=1.0,\
+                            lr=1e-5,nb_gradient_iterations=20,verbose=True):
     """It runs the LOO procedure.
 
     """
@@ -83,9 +83,9 @@ def leave_one_out_procedure(x,y,vars,\
 
         # run leave one out
         w[m], y_pred[m], y_test[m], training_loss[m] = leave_one_out_single(m,x,y,vars,\
-                                                                            lon_size,lat_size,notnan_idx,nan_idx,\
-                                                                            lr,nb_gradient_iterations,\
-                                                                            time_period,rank,lambda_,method,mu_,verbose)
+                                                                            lon_size,lat_size,notnan_idx,nan_idx,time_period,\
+                                                                            method,rank,lambda_,mu_,\
+                                                                            lr,nb_gradient_iterations,verbose)
 
         
         # compute mean rmse 

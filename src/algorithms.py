@@ -106,7 +106,8 @@ def low_rank_projection(M,rank=5):
 
 # compute gradient
 
-def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0):
+def compute_gradient(models,x,y,w,notnan_idx,\
+                     lambda_=1.0,mu_=1.0):
     """This function computes the gradient of ridge log-sum-exp loss with respect to W: 
     $\sum_{m,r} -(2/R^m) X_{m,r}.T (Y_{m,r} - X_{m,r} W) softmax(norm(Y_{m,r} - X_{m,r} W)) +  2\lambda * W$
 
@@ -123,40 +124,34 @@ def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0):
     """
     res = torch.zeros(len(models), w.shape[0], w.shape[0]).to(torch.float64)
     res_sumexp = torch.zeros(len(models)).to(torch.float64)
-
-    # compute each term individually
-    for idx_m, m in enumerate(models):
-        
-        for idx_r, r in enumerate(x[m].keys()):
-
-            # compute -2X_{m,r}^T (Y_{m,r}^T - X_{m,r}^T W)
-            res[idx_m][np.ix_(notnan_idx,notnan_idx)] -= 2*x[m][r][:,notnan_idx].T @ \
-                                                        (y[m][r][:,notnan_idx] - x[m][r][:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)])
-
-            # compute the exponential term
-            res_sumexp[idx_m] += torch.norm(y[m][r][:,notnan_idx] - x[m][r][:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)], p='fro')**2
-
-        res[idx_m] = res[idx_m] / len(x[m].keys())
-        res_sumexp[idx_m] = res_sumexp[idx_m]/(len(x[m].keys())*mu_)
     
+    for idx_m, m in enumerate(models):
+
+        # compute -2X_{m,r}^T (Y_{m,r}^T - X_{m,r}^T W)
+        res[idx_m][np.ix_(notnan_idx,notnan_idx)] = - 2*torch.mean(torch.bmm(torch.transpose(x[m][:,:,notnan_idx], 1,2) , \
+                                                        y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]),dim=0)
+
+        # compute the exponential term
+        res_sumexp[idx_m] = (1/mu_)*torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2)
+            
     softmax = torch.nn.Softmax(dim=0)
     res_sumexp = softmax(res_sumexp)
 
-    # compute gradient
-    grad = torch.zeros_like(w).to(torch.float64)
-    for idx_m, m in enumerate(models):
-        grad[np.ix_(notnan_idx,notnan_idx)] += res_sumexp[idx_m]*res[idx_m][np.ix_(notnan_idx,notnan_idx)]
-        
-    grad = grad + 2*lambda_* w
+    # compute gradient as sum (res * softmax)
+    grad = torch.sum(torch.unsqueeze(torch.unsqueeze(res_sumexp,-1),-1) * res, dim=0)
+    grad[np.ix_(notnan_idx,notnan_idx)] = grad[np.ix_(notnan_idx,notnan_idx)] + 2*lambda_* w[np.ix_(notnan_idx,notnan_idx)]
     
     return grad 
 
-def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,rank=5.0,lambda_=1.0,mu_=1.0,lr=0.1,nb_iterations=10):
+def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,\
+                               rank=5.0,lambda_=1.0,mu_=1.0,\
+                               lr=1e-5,nb_iterations=20):
     """This function runs accelerated gradient descent. If rank is not None, then it runs a low rank projection step at each iteration.
 
        Args:
         - models: list of strings
-        - x,y: dictionaries of input-output pairs per model and per run.
+        - x,y: dictionaries of input-output pairs per model
+        - lon_size, lat_size: integers, longitude-latitude grid size
         - notnan_idx: list of integers
         - rank: integer, low rank constraint
         - lambda_: torch.float64, ridge penalty coefficient
@@ -179,7 +174,7 @@ def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,rank=5.0,
 
         # accelerate gradient descent
         if it > 1:
-            w_tmp = w + ((it-2)/(it+1)) * (w - w_old)
+            w_tmp = w + ((it-1)/(it+2)) * (w - w_old)
         else:
             w_tmp = w.detach()
 
@@ -189,7 +184,6 @@ def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,rank=5.0,
         # compute gradient
         grad = compute_gradient(models,x,y,w_tmp,notnan_idx,lambda_,mu_)
 
-        
         # update the variable w
         w = w_tmp - lr * grad
 
@@ -199,13 +193,12 @@ def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,rank=5.0,
 
         # compute loss functon to check convergence 
         res = torch.zeros(len(models))
-        
-        for idx_m, m in enumerate(models):  
-            for idx_r, r in enumerate(x[m].keys()):
-                res[idx_m] += torch.sum((y[m][r][:,notnan_idx] -x[m][r][:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx] )**2)
-                
-            res[idx_m] = res[idx_m]/len(x[m].keys())
-            
+
+        for idx_m, m in enumerate(models):
+
+            # compute residuals
+            res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2)
+    
         obj = mu_*torch.logsumexp((1/mu_)* res,0)
         obj += lambda_*torch.norm(w,p='fro')**2
 
