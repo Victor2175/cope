@@ -4,10 +4,10 @@ import numpy as np
 from algorithms import ridge_regression, ridge_regression_low_rank, train_robust_weights_model, compute_weights
 
 def leave_one_out_single(model_out,x,y,vars,\
-                         lon_size,lat_size,notnan_idx,nan_idx,\
-                         lr=0.0001,nb_gradient_iterations=50,\
-                         time_period=33,rank=5,\
-                         lambda_=1.0,method='ridge',mu_=1.0,verbose=True):
+                         lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
+                         method='ridge',rank=5,lambda_=1.0,mu_=1.0,\
+                         lr=1e-5,nb_gradient_iterations=50,verbose=True):
+    
     """Run a single iteration the leave-one-out procedure (LOO) with model_out out of the training set.
 
         Args:
@@ -43,14 +43,12 @@ def leave_one_out_single(model_out,x,y,vars,\
     rmse_train = {}
 
     for idx_m,m in enumerate(x.keys()):
+        
         if m != model_out:
-            y_pred_train[m] = {}
-            rmse_train[m] = 0.0
-            for idx_r, r in enumerate(x[m].keys()):
-                y_pred_train[m][r] = torch.zeros(time_period,lon_size*lat_size).to(torch.float64)
-                y_pred_train[m][r][:,notnan_idx] =  x[m][r][:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)].to(torch.float64)
-                rmse_train[m] += torch.nanmean((y_pred_train[m][r] - y[m][r])**2)
-            rmse_train[m] = rmse_train[m] /len(x[m].keys())
+
+            y_pred_train[m] = torch.zeros(x[m].shape[0],time_period,lon_size*lat_size).to(torch.float64)
+            y_pred_train[m][:,:,notnan_idx] =  x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)].to(torch.float64)
+            rmse_train[m] = torch.nanmean((y_pred_train[m] - y[m])**2)
 
 
     # compute the weights
@@ -64,9 +62,9 @@ def leave_one_out_single(model_out,x,y,vars,\
 
 
 def leave_one_out_procedure(x,y,vars,\
-                            lon_size,lat_size, notnan_idx,nan_idx,\
-                            lr=0.00001,nb_gradient_iterations=20,time_period=33,\
-                            rank=5,lambda_=1.0,method='ridge',mu_=1.0,verbose=True):
+                            lon_size,lat_size, notnan_idx, nan_idx,time_period=33,\
+                            method='ridge',rank=None,lambda_=1.0,mu_=1.0,\
+                            lr=1e-5,nb_gradient_iterations=20,verbose=True):
     """It runs the LOO procedure.
 
     """
@@ -83,9 +81,9 @@ def leave_one_out_procedure(x,y,vars,\
 
         # run leave one out
         w[m], y_pred[m], y_test[m], training_loss[m] = leave_one_out_single(m,x,y,vars,\
-                                                                            lon_size,lat_size,notnan_idx,nan_idx,\
-                                                                            lr,nb_gradient_iterations,\
-                                                                            time_period,rank,lambda_,method,mu_,verbose)
+                                                                            lon_size,lat_size,notnan_idx,nan_idx,time_period,\
+                                                                            method,rank,lambda_,mu_,\
+                                                                            lr,nb_gradient_iterations,verbose)
 
         
         # compute mean rmse 
