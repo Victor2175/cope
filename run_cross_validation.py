@@ -19,11 +19,11 @@ with open('data/ssp585_time_series.pkl', 'rb') as f:
     data = pickle.load(f)
 
 # define range of values
-# mu_range_tmp = np.array([0.001, 0.01, 0.1, 1.0, 10.0, 100.0])
-# lambda_range_tmp = np.array([0.01,0.1, 1.0,10.0,100.0])
+mu_range_tmp = np.array([0.001, 0.01, 0.1, 1.0, 10.0, 100.0])
+lambda_range_tmp = np.array([0.01,0.1, 1.0,10.0,100.0])
 
-mu_range_tmp = np.array([1.0])
-lambda_range_tmp = np.array([100.0])
+# mu_range_tmp = np.array([1.0])
+# lambda_range_tmp = np.array([100.0])
 
 with open('data/mu_range.npy', 'wb') as f:
     np.save(f, mu_range_tmp)
