@@ -55,26 +55,26 @@ def data_processing(data,longitude,latitude,max_models = 15):
     return data_processed, notnan_idx, nan_idx
 
 
-def extract_longitude_latitude(file = '/net/h2o/climphys3/simondi/cope-analysis/data/erss/sst_annual_g050_mean_19812014_centered.nc'):
-    """
-    Extract longitude and latitude coordinates as np.array from netcdf file. 
+# def extract_longitude_latitude(file = '/net/h2o/climphys3/simondi/cope-analysis/data/erss/sst_annual_g050_mean_19812014_centered.nc'):
+#     """
+#     Extract longitude and latitude coordinates as np.array from netcdf file. 
     
-    """
-    # read the dataset
-    file2read = netcdf.Dataset(file,'r')
+#     """
+#     # read the dataset
+#     file2read = netcdf.Dataset(file,'r')
     
-    # load longitude, latitude and sst monthly means
-    lon = np.array(file2read.variables['lon'][:])
-    lat = np.array(file2read.variables['lat'][:])
-    sst = np.array(file2read.variables['sst'])
+#     # load longitude, latitude and sst monthly means
+#     lon = np.array(file2read.variables['lon'][:])
+#     lat = np.array(file2read.variables['lat'][:])
+#     sst = np.array(file2read.variables['sst'])
     
-    # define grid (+ croping for latitude > 60)
-    lat_grid, lon_grid = np.meshgrid(lat[lat<=60], lon, indexing='ij')
+#     # define grid (+ croping for latitude > 60)
+#     lat_grid, lon_grid = np.meshgrid(lat[lat<=60], lon, indexing='ij')
     
-    lat_size = lat_grid.shape[0]
-    lon_size = lon_grid.shape[1]
+#     lat_size = lat_grid.shape[0]
+#     lon_size = lon_grid.shape[1]
 
-    return lon, lat, lon_grid, lat_grid
+#     return lon, lat, lon_grid, lat_grid
 
 
 def compute_anomalies(data, lon_size, lat_size, nan_idx, time_period=33):

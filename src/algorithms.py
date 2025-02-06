@@ -1,10 +1,10 @@
-import torch
+import torch     # type: ignore
 import numpy as np
 
 # 1- Ridge regression problem : 
 # $\min_{W} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2$
 
-def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32):
+def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32,verbose=False):
     """
     Computes the closed-form solution for reduced rank regression.
     
@@ -26,7 +26,9 @@ def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32):
 
     # print loss function
     loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
-    print("Loss function: ", loss.item())
+    
+    if verbose:
+        print("Loss function: ", loss.item())
     
     return W_ols
 
@@ -36,7 +38,7 @@ def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32):
 # $\min_{W \colon \mathrm{rank}(W) \leq r} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2$
 
 
-def ridge_regression_low_rank(X, Y, rank=5.0, lambda_=1.0,dtype=torch.float32):
+def ridge_regression_low_rank(X, Y, rank=5.0, lambda_=1.0,dtype=torch.float32,verbose=False):
     """
     Computes the closed-form solution for reduced rank regression.
     
@@ -70,7 +72,9 @@ def ridge_regression_low_rank(X, Y, rank=5.0, lambda_=1.0,dtype=torch.float32):
 
     # print loss function
     loss = torch.norm(Y - X @ W_rrr,p='fro')**2 + lambda_ * torch.norm(W_rrr,p='fro')**2
-    print("Loss function: ", loss.item())
+    
+    if verbose:
+        print("Loss function: ", loss.item())
 
     return W_rrr
 
@@ -97,6 +101,10 @@ def low_rank_projection(M,rank=5,dtype=torch.float32):
     # compute regressor
     M_low_rank = U_r @ S_r @ V_r.T 
 
+    # assert that the rank is correct
+    assert torch.linalg.matrix_rank(M_low_rank) == rank
+
+    # return low-rank projection
     return M_low_rank
 
 ######## Functions used to perform accelerated gradient descent to solve the robust weight regression problem #########
@@ -143,7 +151,7 @@ def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0,dtype=torch.flo
 
 def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,\
                                rank=5.0,lambda_=1.0,mu_=1.0,\
-                               lr=1e-5,nb_iterations=20,dtype=torch.float32):
+                               lr=1e-5,nb_iterations=20,dtype=torch.float32,verbose=False):
     """This function runs accelerated gradient descent. If rank is not None, then it runs a low rank projection step at each iteration.
 
        Args:
@@ -187,24 +195,24 @@ def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,\
 
         # low rank projection
         if rank is not None:
-            w = low_rank_projection(w,rank=rank)
+            w = low_rank_projection(w,rank=rank,dtype=dtype)
 
-        # # compute loss functon to check convergence 
-        # res = torch.zeros(len(models))
 
-        # for idx_m, m in enumerate(models):
+        if verbose:
+            
+            # compute loss functon to check convergence 
+            res = torch.zeros(len(models))
 
-        #     # compute residuals
-        #     res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2)
-    
-        # obj = mu_*torch.logsumexp((1/mu_)* res,0)
-        # obj += lambda_*torch.norm(w,p='fro')**2
+            for idx_m, m in enumerate(models):
 
-        # print("Iteration ", it,  ": Loss function : ", obj.item())
+                # compute residuals
+                res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2)
         
-        # training_loss[it] = obj.item()
+            obj = mu_*torch.logsumexp((1/mu_)* res,0)
+            obj += lambda_*torch.norm(w,p='fro')**2
 
-    
+            print("Iteration ", it,  ": Loss function : ", obj.item())
+            
     return w
 
 
