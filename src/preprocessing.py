@@ -4,7 +4,6 @@
 import skimage
 import numpy as np
 import torch
-import netCDF4 as netcdf
 
 
 def data_processing(data,longitude,latitude,max_models = 15):
@@ -187,7 +186,7 @@ def compute_variance(data,lon_size, lat_size, nan_idx, time_period=33):
 
     return variance
 
-def stack_runs(x,y,vars,time_length=33,lon_size=72,lat_size=30):
+def stack_runs(x,y,vars,time_period=33,lon_size=72,lat_size=30,dtype=torch.float32):
     """ Concatenate.
 
         Args:
@@ -205,9 +204,9 @@ def stack_runs(x,y,vars,time_length=33,lon_size=72,lat_size=30):
     vars_stacked = {}
     
     for idx_m,m in enumerate(x.keys()):
-        y_stacked[m] = torch.zeros(len(x[m].keys()), time_length, lon_size*lat_size).to(torch.float64)
-        x_stacked[m] = torch.zeros(len(x[m].keys()), time_length, lon_size*lat_size).to(torch.float64)
-        vars_stacked[m] = torch.zeros(len(x[m].keys()), time_length, lon_size*lat_size).to(torch.float64)
+        y_stacked[m] = torch.zeros(len(x[m].keys()), time_period, lon_size*lat_size,dtype=dtype)
+        x_stacked[m] = torch.zeros(len(x[m].keys()), time_period, lon_size*lat_size,dtype=dtype)
+        vars_stacked[m] = torch.zeros(len(x[m].keys()), time_period, lon_size*lat_size,dtype=dtype)
         
     
         for idx_r, r in enumerate(x[m].keys()):
@@ -244,22 +243,11 @@ def merge_runs(x,y,vars):
         x_merged[m] = x[m].view(-1,d)
         vars_merged[m] = vars[m].view(-1,d)
     
-        # for idx_r, r in enumerate(x[m].keys()):
-
-        #     if idx_r ==0:
-        #         y_merged[m] = y[m][r]
-        #         x_merged[m] = x[m][r]
-        #         vars_merged[m] = vars[m]
-        #     else:
-        #         y_merged[m] = torch.cat([y_merged[m],y[m][r]],dim=0 )
-        #         x_merged[m] = torch.cat([x_merged[m], x[m][r]],dim=0)  
-        #         vars_merged[m] = torch.cat([vars_merged[m], vars[m]],dim=0)
-    
     return x_merged, y_merged, vars_merged   
 
 
 
-def numpy_to_torch(x,y,vars):
+def numpy_to_torch(x,y,vars, dtype=torch.float32):
     x_tmp = {}
     y_tmp = {}
     vars_tmp = {}
@@ -270,10 +258,10 @@ def numpy_to_torch(x,y,vars):
         vars_tmp[m] = {}
         
         for idx_r, r in enumerate(x[m].keys()):
-            x_tmp[m][r] = torch.from_numpy(x[m][r]).to(torch.float64)
-            y_tmp[m][r] = torch.from_numpy(y[m][r]).to(torch.float64)
+            x_tmp[m][r] = torch.from_numpy(x[m][r]).to(dtype)
+            y_tmp[m][r] = torch.from_numpy(y[m][r]).to(dtype)
             
-        vars_tmp[m] = torch.from_numpy(vars[m]).to(torch.float64)
+        vars_tmp[m] = torch.from_numpy(vars[m]).to(dtype)
 
     return x_tmp, y_tmp, vars_tmp
 
@@ -310,7 +298,7 @@ def standardize(x,y,vars,merged=False):
     return x_tmp, y_tmp
 
 
-def build_training_and_test_sets(m_out,x,y,vars,lon_size,lat_size,time_period=33):
+def build_training_and_test_sets(m_out,x,y,vars,lon_size,lat_size,time_period=33,dtype=torch.float32):
     """Concatenate training sets for all models except model m. This enables to create the big matrices X and Y.
 
        Args:

@@ -7,7 +7,7 @@ sys.path.append(maindir+"/src")
 import torch
 import numpy as np
 import pickle
-from preprocessing import data_processing, compute_anomalies, extract_longitude_latitude, \
+from preprocessing import data_processing, compute_anomalies, \
                             compute_forced_response, compute_variance, \
                             merge_runs, stack_runs, numpy_to_torch, standardize, build_training_and_test_sets
 
@@ -19,10 +19,10 @@ with open('data/ssp585_time_series.pkl', 'rb') as f:
     data = pickle.load(f)
 
 # define range of values
-mu_range_tmp = np.array([0.001, 0.01, 0.1, 1.0, 10.0, 100.0])
-lambda_range_tmp = np.array([0.01,0.1, 1.0,10.0,100.0])
+mu_range_tmp = np.array([100.0,500.0, 1000.0, 5000.0,10000.0])
+lambda_range_tmp = np.array([0.1, 1.0,10.0,100.0, 1000.0])
 
-# mu_range_tmp = np.array([1.0])
+# mu_range_tmp = np.array([1000.0])
 # lambda_range_tmp = np.array([100.0])
 
 with open('data/mu_range.npy', 'wb') as f:
@@ -31,8 +31,17 @@ with open('data/mu_range.npy', 'wb') as f:
 with open('data/lambda_range.npy', 'wb') as f:
     np.save(f, lambda_range_tmp)
 
-###################### Load ERA5 data
-lon, lat, lon_grid, lat_grid = extract_longitude_latitude() 
+###################### Load longitude and latitude 
+with open('data/lon.npy', 'rb') as f:
+    lon = np.load(f)
+
+with open('data/lat.npy', 'rb') as f:
+    lat = np.load(f)
+
+
+# define grid (+ croping for latitude > 60)
+lat_grid, lon_grid = np.meshgrid(lat[lat<=60], lon, indexing='ij')
+
 lat_size = lat_grid.shape[0]
 lon_size = lon_grid.shape[1]
 
@@ -56,7 +65,7 @@ x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
 ###############################################################################
 
 ########################### get ridge regressor W
-w_ridge, rmse_ridge, training_loss_ridge, weights_ridge = cross_validation_procedure(x,y,vars,\
+w_ridge, rmse_ridge, weights_ridge = cross_validation_procedure(x,y,vars,\
                                                            lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
                                                             method='ridge', rank=None, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
                                                             lr=1e-5,nb_gradient_iterations=20,verbose=True)
@@ -72,11 +81,11 @@ with open('results/ridge/rmse_ridge.pkl', 'wb') as f:
 with open('results/ridge/weights_ridge.pkl', 'wb') as f:
     pickle.dump(weights_ridge, f)
 
-with open('results/ridge/training_loss_ridge.pkl', 'wb') as f:
-    pickle.dump(training_loss_ridge, f)
+# with open('results/ridge/training_loss_ridge.pkl', 'wb') as f:
+#     pickle.dump(training_loss_ridge, f)
 
 ########################## get ridge regressor W low-rank
-w_ridge_lr, rmse_ridge_lr, training_loss_ridge_lr, weights_ridge_lr = cross_validation_procedure(x,y,vars,\
+w_ridge_lr, rmse_ridge_lr, weights_ridge_lr = cross_validation_procedure(x,y,vars,\
                                                            lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
                                                             method='rrr', rank=10, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
                                                             lr=1e-5,nb_gradient_iterations=20,verbose=True)
@@ -92,13 +101,13 @@ with open('results/ridge_low_rank/rmse_ridge_lr.pkl', 'wb') as f:
 with open('results/ridge_low_rank/weights_ridge_lr.pkl', 'wb') as f:
     pickle.dump(weights_ridge_lr, f)
 
-with open('results/ridge_low_rank/training_loss_ridge_lr.pkl', 'wb') as f:
-    pickle.dump(training_loss_ridge_lr, f)
+# with open('results/ridge_low_rank/training_loss_ridge_lr.pkl', 'wb') as f:
+#     pickle.dump(training_loss_ridge_lr, f)
 
 
 
 ############################# get robust regressor W 
-w_robust, rmse_robust, training_loss_robust, weights_robust = cross_validation_procedure(x,y,vars,\
+w_robust, rmse_robust, weights_robust = cross_validation_procedure(x,y,vars,\
                                                            lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
                                                             method='robust', rank=None, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
                                                             lr=1e-5,nb_gradient_iterations=100,verbose=True)
@@ -113,12 +122,12 @@ with open('results/robust/rmse_robust.pkl', 'wb') as f:
 with open('results/robust/weights_robust.pkl', 'wb') as f:
     pickle.dump(weights_robust, f)
 
-with open('results/robust/training_loss_robust.pkl', 'wb') as f:
-    pickle.dump(training_loss_robust, f)
+# with open('results/robust/training_loss_robust.pkl', 'wb') as f:
+#     pickle.dump(training_loss_robust, f)
 
 
 ### get robust regressor W low-rank
-w_robust_lr, rmse_robust_lr, training_loss_robust_lr, weights_robust_lr = cross_validation_procedure(x,y,vars,\
+w_robust_lr, rmse_robust_lr, weights_robust_lr = cross_validation_procedure(x,y,vars,\
                                                                lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
                                                                 method='robust', rank=10, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
                                                                 lr=1e-5,nb_gradient_iterations=100,verbose=True)
@@ -134,8 +143,8 @@ with open('results/robust_low_rank/rmse_robust_lr.pkl', 'wb') as f:
 with open('results/robust_low_rank/weights_robust_lr.pkl', 'wb') as f:
     pickle.dump(weights_robust_lr, f)
 
-with open('results/robust_low_rank/training_loss_robust_lr.pkl', 'wb') as f:
-    pickle.dump(training_loss_robust_lr, f)
+# with open('results/robust_low_rank/training_loss_robust_lr.pkl', 'wb') as f:
+#     pickle.dump(training_loss_robust_lr, f)
 
 
 # ################################ display results ##########################################

@@ -24,15 +24,14 @@ def cross_validation_procedure(x,y,vars,\
 
         for idx_mu, mu_ in enumerate(mu_range):
 
-            w_tmp, rmse[(lambda_,mu_)], training_loss[(lambda_,mu_)], weights[(lambda_,mu_)] = \
-                                        leave_one_out_procedure(x,y,vars,\
-                                                                lon_size,lat_size, notnan_idx,nan_idx,time_period,\
-                                                                method, rank, lambda_, mu_,\
-                                                                lr,nb_gradient_iterations,verbose)
+            w_tmp, rmse[(lambda_,mu_)], weights[(lambda_,mu_)] = leave_one_out_procedure(x,y,vars,\
+                                                                                        lon_size,lat_size, notnan_idx,nan_idx,time_period,\
+                                                                                        method, rank, lambda_, mu_,\
+                                                                                        lr,nb_gradient_iterations,verbose)
             
             # w_tmp is very big: we take the mean of it
             w[(lambda_,mu_)] = torch.from_numpy(np.nanmean(np.array(list(w_tmp.values())), axis=0))
             
 
-    return w,rmse,training_loss,weights
+    return w,rmse,weights
     
