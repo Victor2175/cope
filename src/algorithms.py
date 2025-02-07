@@ -198,7 +198,7 @@ def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,\
             w = low_rank_projection(w,rank=rank,dtype=dtype)
 
 
-        if verbose:
+        if verbose==True:
             
             # compute loss functon to check convergence 
             res = torch.zeros(len(models))
