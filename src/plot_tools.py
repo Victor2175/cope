@@ -80,7 +80,7 @@ def plot_robust_weights(weights):
 
 ########## plot animated gif of a groundtruth vs prediction ####################
 
-def animation_gt_vs_pred(y_truth,x, w, notnan_idx, nan_idx,lon_grid, lat_grid, run_idx=0, time_period=33):
+def animation_gt_vs_pred(y_truth,x, w, notnan_idx, nan_idx,lon_grid, lat_grid, run_idx=0, time_period=33,savefile=False):
     """
     Plot groundtruth vs prediction for a given time index.
 
@@ -115,16 +115,16 @@ def animation_gt_vs_pred(y_truth,x, w, notnan_idx, nan_idx,lon_grid, lat_grid, r
     ax1.set_ylabel(r'y', size=7)
     
     # get groundtruth and prediction to plot (first run)
-    y_to_plot_target_tmp = y_truth[run_idx*time_period,:].detach().numpy().reshape(lat_size,lon_size)
-    y_to_plot_pred_tmp = y_pred[run_idx*time_period,:].detach().numpy().reshape(lat_size,lon_size)
+    y_to_plot_target_tmp = y_truth[run_idx,:,:].detach().numpy().reshape(lat_size,lon_size)
+    y_to_plot_pred_tmp = y_pred[run_idx,:,:].detach().numpy().reshape(lat_size,lon_size)
    
     im0 = ax0.pcolormesh(lon_grid,lat_grid,y_to_plot_target_tmp,vmin=-1.0,vmax=2.0)
     im1 = ax1.pcolormesh(lon_grid,lat_grid,y_to_plot_pred_tmp,vmin=-1.0,vmax=2.0)
    
     def animate_maps(i):
     
-        y_to_plot_target = y_truth[run_idx*time_period + i,:].detach().numpy().reshape(lat_size,lon_size)
-        y_to_plot_pred = y_pred[run_idx*time_period + i,:].detach().numpy().reshape(lat_size,lon_size)
+        y_to_plot_target = y_truth[run_idx,i,:].detach().numpy().reshape(lat_size,lon_size)
+        y_to_plot_pred = y_pred[run_idx,i,:].detach().numpy().reshape(lat_size,lon_size)
     
         im0 = ax0.pcolormesh(lon_grid,lat_grid,y_to_plot_target,vmin=-1.0,vmax=2.0)
         im1 = ax1.pcolormesh(lon_grid,lat_grid,y_to_plot_pred,vmin=-1.0,vmax=2.0)
@@ -134,4 +134,5 @@ def animation_gt_vs_pred(y_truth,x, w, notnan_idx, nan_idx,lon_grid, lat_grid, r
     anim = animation.FuncAnimation(fig0, animate_maps, frames=time_period)
 
     # save animation
-    anim.save(filename='results/gt_vs_prediction_run_'+str(run_idx)+'.mp4',writer=animation.FFMpegWriter(fps=5))
+    if savefile==True:
+        anim.save(filename='results/gt_vs_prediction_run_'+str(run_idx)+'.mp4',writer=animation.FFMpegWriter(fps=5))

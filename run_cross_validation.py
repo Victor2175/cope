@@ -21,16 +21,16 @@ with open('data/ssp585_time_series.pkl', 'rb') as f:
     data = pickle.load(f)
 
 # define range of values
-mu_range_tmp = np.array([100.0,500.0, 1000.0, 5000.0,10000.0])
-lambda_range_tmp = np.array([0.1, 1.0,10.0,100.0, 1000.0])
+mu_range_tmp = np.array([1.0, 5.0, 10.0, 50, 100.0,500.0, 1000.0])
+lambda_range_tmp = np.array([0.0, 10.0,50.0,100.0,500.0, 1000.0, 5000.0, 10000.0])
 
 # mu_range_tmp = np.array([1000.0])
 # lambda_range_tmp = np.array([100.0])
 
-with open('data/mu_range.npy', 'wb') as f:
+with open('data/mu_range_bis.npy', 'wb') as f:
     np.save(f, mu_range_tmp)
 
-with open('data/lambda_range.npy', 'wb') as f:
+with open('data/lambda_range_bis.npy', 'wb') as f:
     np.save(f, lambda_range_tmp)
 
 ###################### Load longitude and latitude 
@@ -66,90 +66,90 @@ x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
 
 ###############################################################################
 
-########################### get ridge regressor W
-# w_ridge, rmse_ridge, weights_ridge, training_loss_ridge = \
-#                         cross_validation_procedure(x,y,vars,\
-#                         lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
-#                         method='ridge', rank=None, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
-#                         lr=1e-5,nb_gradient_iterations=20,dtype=DTYPE,verbose=False)
+########################## get ridge regressor W
+w_ridge, rmse_ridge, weights_ridge, training_loss_ridge = \
+                        cross_validation_procedure(x,y,vars,\
+                        lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
+                        method='ridge', rank=None, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
+                        lr=1e-5,nb_gradient_iterations=20,dtype=DTYPE,verbose=False)
                            
 
-# ### save files
-# with open('results/ridge/w_ridge.pkl', 'wb') as f:
-#     pickle.dump(w_ridge, f)
+### save files
+with open('results/ridge/w_ridge.pkl', 'wb') as f:
+    pickle.dump(w_ridge, f)
 
-# with open('results/ridge/rmse_ridge.pkl', 'wb') as f:
-#     pickle.dump(rmse_ridge, f)
+with open('results/ridge/rmse_ridge.pkl', 'wb') as f:
+    pickle.dump(rmse_ridge, f)
 
-# with open('results/ridge/weights_ridge.pkl', 'wb') as f:
-#     pickle.dump(weights_ridge, f)
+with open('results/ridge/weights_ridge.pkl', 'wb') as f:
+    pickle.dump(weights_ridge, f)
 
-# with open('results/ridge/training_loss_ridge.pkl', 'wb') as f:
-#     pickle.dump(training_loss_ridge, f)
+with open('results/ridge/training_loss_ridge.pkl', 'wb') as f:
+    pickle.dump(training_loss_ridge, f)
 
-########################## get ridge regressor W low-rank
-# w_ridge_lr, rmse_ridge_lr, weights_ridge_lr, training_loss_ridge_lr = \
-#                             cross_validation_procedure(x,y,vars,\
-#                             lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
-#                             method='rrr', rank=10, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
-#                             lr=1e-5,nb_gradient_iterations=20,dtype=DTYPE,verbose=False)
-
-
-# ### save files
-# with open('results/ridge_low_rank/w_ridge_lr.pkl', 'wb') as f:
-#     pickle.dump(w_ridge_lr, f)
-
-# with open('results/ridge_low_rank/rmse_ridge_lr.pkl', 'wb') as f:
-#     pickle.dump(rmse_ridge_lr, f)
-
-# with open('results/ridge_low_rank/weights_ridge_lr.pkl', 'wb') as f:
-#     pickle.dump(weights_ridge_lr, f)
-
-# with open('results/ridge_low_rank/training_loss_ridge_lr.pkl', 'wb') as f:
-#     pickle.dump(training_loss_ridge_lr, f)
+######################### get ridge regressor W low-rank
+w_ridge_lr, rmse_ridge_lr, weights_ridge_lr, training_loss_ridge_lr = \
+                            cross_validation_procedure(x,y,vars,\
+                            lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
+                            method='rrr', rank=10, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
+                            lr=1e-5,nb_gradient_iterations=20,dtype=DTYPE,verbose=False)
 
 
+### save files
+with open('results/ridge_low_rank/w_ridge_lr_bis.pkl', 'wb') as f:
+    pickle.dump(w_ridge_lr, f)
 
-############################# get robust regressor W 
-# w_robust, rmse_robust, weights_robust, training_loss_robust = \
-#                         cross_validation_procedure(x,y,vars,\
-#                         lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
-#                         method='robust', rank=None, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
-#                         lr=1e-5,nb_gradient_iterations=5,dtype=DTYPE,verbose=True)
+with open('results/ridge_low_rank/rmse_ridge_lr_bis.pkl', 'wb') as f:
+    pickle.dump(rmse_ridge_lr, f)
 
-# ### save files
-# with open('results/robust/w_robust.pkl', 'wb') as f:
-#     pickle.dump(w_robust, f)
+with open('results/ridge_low_rank/weights_ridge_lr_bis.pkl', 'wb') as f:
+    pickle.dump(weights_ridge_lr, f)
 
-# with open('results/robust/rmse_robust.pkl', 'wb') as f:
-#     pickle.dump(rmse_robust, f)
+with open('results/ridge_low_rank/training_loss_ridge_lr_bis.pkl', 'wb') as f:
+    pickle.dump(training_loss_ridge_lr, f)
 
-# with open('results/robust/weights_robust.pkl', 'wb') as f:
-#     pickle.dump(weights_robust, f)
 
-# with open('results/robust/training_loss_robust.pkl', 'wb') as f:
-#     pickle.dump(training_loss_robust, f)
+
+############################ get robust regressor W 
+w_robust, rmse_robust, weights_robust, training_loss_robust = \
+                        cross_validation_procedure(x,y,vars,\
+                        lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
+                        method='robust', rank=None, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
+                        lr=1e-5,nb_gradient_iterations=5,dtype=DTYPE,verbose=True)
+
+### save files
+with open('results/robust/w_robust_bis.pkl', 'wb') as f:
+    pickle.dump(w_robust, f)
+
+with open('results/robust/rmse_robust_bis.pkl', 'wb') as f:
+    pickle.dump(rmse_robust, f)
+
+with open('results/robust/weights_robust_bis.pkl', 'wb') as f:
+    pickle.dump(weights_robust, f)
+
+with open('results/robust/training_loss_robust_bis.pkl', 'wb') as f:
+    pickle.dump(training_loss_robust, f)
 
 
 ### get robust regressor W low-rank
 w_robust_lr, rmse_robust_lr, weights_robust_lr,training_loss_robust_lr = \
                             cross_validation_procedure(x,y,vars,\
                             lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
-                            method='robust', rank=10, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
+                            method='robust', rank=20, lambda_range=lambda_range_tmp, mu_range = mu_range_tmp ,\
                             lr=1e-5,nb_gradient_iterations=100,dtype=DTYPE,verbose=False)
 
 
 
-with open('results/robust_low_rank/w_robust_lr.pkl', 'wb') as f:
+with open('results/robust_low_rank/w_robust_lr_bis.pkl', 'wb') as f:
     pickle.dump(w_robust_lr, f)
 
-with open('results/robust_low_rank/rmse_robust_lr.pkl', 'wb') as f:
+with open('results/robust_low_rank/rmse_robust_lr_bis.pkl', 'wb') as f:
     pickle.dump(rmse_robust_lr, f)
 
-with open('results/robust_low_rank/weights_robust_lr.pkl', 'wb') as f:
+with open('results/robust_low_rank/weights_robust_lr_bis.pkl', 'wb') as f:
     pickle.dump(weights_robust_lr, f)
 
-with open('results/robust_low_rank/training_loss_robust_lr.pkl', 'wb') as f:
+with open('results/robust_low_rank/training_loss_robust_lr_bis.pkl', 'wb') as f:
     pickle.dump(training_loss_robust_lr, f)
 
 

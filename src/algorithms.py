@@ -256,13 +256,17 @@ def prediction(x, W, notnan_idx,nan_idx,dtype=torch.float32):
     Compute target prediction given time series x and regressor W.
 
     Args:
-        - x: torch.tensor (time series length * nb_runs, grid size) 
+        - x: torch.tensor (runs, time series length, grid size) 
         - W: torch.tensor (grid size non-nan idx, grid size non-nan idx)
         - notnan_idx, nan_idx: torch.tensor integers
+
+    Returns:
+        - y_pred: torch.tensor (runs, time series length, grid size)
     """    
-    y_pred = torch.nan_to_num(x) @ W
-    y_pred[:,nan_idx] = float('nan')
+    y_pred = torch.nan_to_num(x) @  W
+    y_pred[:,:,nan_idx] = float('nan')
     
     return y_pred
+
 
 
