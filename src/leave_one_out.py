@@ -18,12 +18,12 @@ def leave_one_out_single(model_out,x,y,vars,\
     training_models, x_train, y_train, x_test, y_test = build_training_and_test_sets(model_out,x,y,vars,lon_size,lat_size,time_period=33,dtype=dtype)
 
     # if method = ridge, then we train the ridge regression model
-    if method == 'ridge':
+    if (method == 'ridge') and (rank is None):
 
         # compute ridge regression coefficient 
         w[np.ix_(notnan_idx,notnan_idx)] = ridge_regression(x_train[:,notnan_idx], y_train[:,notnan_idx], lambda_,dtype=dtype)
 
-    elif method == 'ridge-lr':
+    elif (method == 'ridge') and (rank is not None):
 
         # compute low rank ridge regression coefficient
         w[np.ix_(notnan_idx,notnan_idx)] = ridge_regression_low_rank(x_train[:,notnan_idx], y_train[:,notnan_idx], rank, lambda_,dtype=dtype)

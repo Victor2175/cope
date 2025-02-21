@@ -334,3 +334,39 @@ def build_training_and_test_sets(m_out,x,y,vars,lon_size,lat_size,time_period=33
                 y_train = torch.cat([y_train, y_merged[m]],dim=0)
 
     return training_models, x_train, y_train, x_test, y_test
+
+
+def build_training_and_test_sets_stacked(m_out,x,y,vars,lon_size,lat_size,time_period=33,dtype=torch.float32):
+    """Stack all ensemble members except for model m. This enables to create the big matrices X and Y.
+
+       Args:
+
+       Return:
+    """
+
+    # We construct X, Y in R^{grid x runs*time steps}
+    x_train = 0
+    y_train = 0
+
+    # We construct X_test, Y_test in R^{grid x runs*time steps}
+    x_test = x[m_out]
+    y_test = x[m_out]
+
+    # Concatenate all models to build the matrix X
+    training_models = []
+    count_tmp = 0
+    
+    for idx_m,m in enumerate(x.keys()):
+
+        if m != m_out:
+            training_models.append(m)
+            if count_tmp ==0:
+                x_train = x[m]
+                y_train = y[m]
+                count_tmp +=1 
+                
+            else:
+                x_train = torch.cat([x_train, x[m]],dim=0)
+                y_train = torch.cat([y_train, y[m]],dim=0)
+
+    return training_models, x_train, y_train, x_test, y_test

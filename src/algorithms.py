@@ -24,10 +24,9 @@ def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32,verbose=False):
     # compute ordinary least square solution 
     W_ols = P @ X.T @ Y
 
-    # print loss function
-    loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
-    
+    # print loss function 
     if verbose:
+        loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
         print("Loss function: ", loss.item())
     
     return W_ols
@@ -71,9 +70,8 @@ def ridge_regression_low_rank(X, Y, rank=5.0, lambda_=1.0,dtype=torch.float32,ve
     W_rrr = W_ols @ V_r @ V_r.T
 
     # print loss function
-    loss = torch.norm(Y - X @ W_rrr,p='fro')**2 + lambda_ * torch.norm(W_rrr,p='fro')**2
-    
     if verbose:
+        loss = torch.norm(Y - X @ W_rrr,p='fro')**2 + lambda_ * torch.norm(W_rrr,p='fro')**2
         print("Loss function: ", loss.item())
 
     return W_rrr
