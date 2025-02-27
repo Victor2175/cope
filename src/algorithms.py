@@ -118,7 +118,7 @@ def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0,dtype=torch.flo
 
     Args:
         - models: list of strings
-        - x,y: dictionaries of input-output pairs per model and per run.
+        - x,y: dictionaries of input-output pairs per model and per run, and variances.
         - w: torch.tensor (grid_size, grid_size)
         - notnan_idx: list of integers
         - lambda_: torch.dtype, ridge penalty coefficient
@@ -137,7 +137,7 @@ def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0,dtype=torch.flo
                                                         y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]),dim=0, dtype=dtype)
 
         # compute the exponential term
-        res_sumexp[idx_m] = (1/mu_)*torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2)
+        res_sumexp[idx_m] = (1/mu_)*torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2, dtype=dtype)
             
     res_sumexp = torch.nn.functional.softmax(res_sumexp,dim=0, dtype=dtype)
 
@@ -154,7 +154,7 @@ def train_robust_weights_model(models,x,y,lon_size,lat_size,notnan_idx,\
 
        Args:
         - models: list of strings, climate models taken into account
-        - x,y: dictionaries of input-output pairs per model
+        - x,y: dictionaries of input-output pairs and variances per model 
         - lon_size, lat_size: integers, longitude-latitude grid size
         - notnan_idx: list of integers
         - rank: integer, low rank constraint

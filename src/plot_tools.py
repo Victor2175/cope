@@ -80,7 +80,7 @@ def plot_robust_weights(weights):
 
 ########## plot animated gif of a groundtruth vs prediction ####################
 
-def animation_gt_vs_pred(y_truth,x, w, notnan_idx, nan_idx,lon_grid, lat_grid, run_idx=0, time_period=33,savefile=False):
+def animation_gt_vs_pred(y_truth,x, w, notnan_idx, nan_idx,lon_grid, lat_grid, run_idx=0, time_period=34,savefile=False):
     """
     Plot groundtruth vs prediction for a given time index.
 

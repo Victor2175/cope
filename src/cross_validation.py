@@ -3,7 +3,7 @@ import numpy as np
 from leave_one_out import leave_one_out_procedure
 
 def cross_validation_procedure(x,y,vars,\
-                               lon_size,lat_size,notnan_idx,nan_idx,time_period=33,\
+                               lon_size,lat_size,notnan_idx,nan_idx,time_period=34,\
                                method='ridge', rank=None, lambda_range=torch.tensor([1.0]), mu_range=torch.tensor([1.0]),\
                                lr=1e-5,nb_gradient_iterations=20,dtype=torch.float32,verbose=True):
     """

@@ -61,7 +61,7 @@ x, y, vars = numpy_to_torch(x,y,vars)
 x, y = standardize(x,y,vars)
 
 # merge runs for each model
-x, y, vars = stack_runs(x,y,vars)
+x, y = stack_runs(x,y)
 x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
 
 ###############################################################################

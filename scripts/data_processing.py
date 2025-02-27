@@ -94,15 +94,45 @@ for idx, model in enumerate(model_names):
     for idx_key, key in enumerate(dic_model_forcing[model][forcing_hist].keys()):
         
         # load the runs
+        print(dic_model_forcing[model][forcing_hist][key].shape)
         dic_runs_hist[model][key] = dic_model_forcing[model][forcing_hist][key]
+    print("Number of runs of model ", model, " : ", len(dic_runs_hist[model].keys()))
+
+
+forcing_hist  = "historical"
+forcing_ssp585 = "ssp585"
+
+dic_merged_runs_ssp585 = {i: [] for i in model_names}
+
+for idx, model in enumerate(model_names):
+    
+    dic_merged_runs_ssp585[model] = {}
+
+    for idx_key, key in enumerate(dic_model_forcing[model][forcing_ssp585].keys()):
+        
+        if key in dic_model_forcing[model][forcing_hist].keys():
+            
+            print(model, key)
+            print(dic_model_forcing[model][forcing_hist][key].shape)
+            print(dic_model_forcing[model][forcing_ssp585][key].shape)
+
+
+            # load the run
+            hist_run = dic_model_forcing[model][forcing_hist][key]
+            future_run = dic_model_forcing[model][forcing_ssp585][key]
+
+            # concatenate the run 
+            full_run = np.concatenate([hist_run,future_run],axis=0) 
+            dic_merged_runs_ssp585[model][key] = full_run
+    print("Number of runs of model ", model, " : ", len(dic_merged_runs_ssp585[model].keys()))
 
 
 ############# Write pickle file that contains historical data ################
 # create a binary pickle file 
-f = open("../data/ssp585_time_series.pkl","wb")
+# f = open("../data/ssp585_time_series.pkl","wb")
 
-# write the python object (dict) to pickle file
-pickle.dump(dic_runs_hist,f)
+# # write the python object (dict) to pickle file
+# pickle.dump(dic_runs_hist,f)
 
-# close file
-f.close()
+# # close file
+# f.close()
