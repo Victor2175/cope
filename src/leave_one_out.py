@@ -1,11 +1,13 @@
 from preprocessing import rescale_and_merge_training_and_test_sets, rescale_training_and_test_sets
 import torch
 import numpy as np
-from algorithms import ridge_regression, ridge_regression_low_rank, train_robust_weights_model, compute_weights
+from algorithms import ridge_regression, ridge_regression_low_rank, \
+                        train_robust_weights, train_trace_norm, \
+                        train_robust_weights_trace_norm, compute_weights
 
-def leave_one_out_single(model_out,x,y,vars,\
+def leave_one_out_single(model_out,x,y,means,vars,\
                          lon_size,lat_size,notnan_idx,nan_idx,time_period=34,\
-                         method='ridge',rank=5,lambda_=1.0,mu_=1.0,\
+                         method='ridge',rank=5,lambda_=1.0,mu_=1.0,nu_=1.0,\
                          lr=1e-5,nb_gradient_iterations=50,dtype=torch.float32,verbose=False):
     
     """Run a single iteration the leave-one-out procedure (LOO) with model_out out of the training set.
@@ -15,25 +17,35 @@ def leave_one_out_single(model_out,x,y,vars,\
         Returns:
     """
     w = torch.zeros(lon_size * lat_size, lon_size * lat_size,dtype=dtype)
-    training_models, x_rescaled, y_rescaled = rescale_training_and_test_sets(model_out,x,y,vars,lon_size,lat_size,time_period=time_period,dtype=dtype)
-    _, x_train_merged, y_train_merged, x_test_merged, y_test_merged = rescale_and_merge_training_and_test_sets(model_out,x,y,vars,lon_size,lat_size,time_period=time_period,dtype=dtype)
+    training_models, x_rescaled, y_rescaled = rescale_training_and_test_sets(model_out,x,y,means,vars,dtype=dtype)
+    _, x_train_merged, y_train_merged, x_test_merged, y_test_merged = rescale_and_merge_training_and_test_sets(model_out,x,y,means,vars,dtype=dtype)
     
 
     # if method = ridge, then we train the ridge regression model
     if (method == 'ridge') and (rank is None):
 
         # compute ridge regression coefficient 
-        w[np.ix_(notnan_idx,notnan_idx)] = ridge_regression(x_train_merged[:,notnan_idx], y_train_merged[:,notnan_idx], lambda_,dtype=dtype)
+        w[np.ix_(notnan_idx,notnan_idx)] = ridge_regression(x_train_merged[:,notnan_idx], y_train_merged[:,notnan_idx], lambda_,dtype=dtype,verbose=verbose)
 
     elif (method == 'ridge') and (rank is not None):
 
         # compute low rank ridge regression coefficient
-        w[np.ix_(notnan_idx,notnan_idx)] = ridge_regression_low_rank(x_train_merged[:,notnan_idx], y_train_merged[:,notnan_idx], rank, lambda_,dtype=dtype)
+        w[np.ix_(notnan_idx,notnan_idx)] = ridge_regression_low_rank(x_train_merged[:,notnan_idx], y_train_merged[:,notnan_idx], rank, lambda_,dtype=dtype,verbose=verbose)
 
     elif method == 'robust':
 
         # compute low rank ridge regression coefficient
-        w  = train_robust_weights_model(training_models,x_rescaled,y_rescaled,lon_size,lat_size,notnan_idx,rank,lambda_,mu_,lr,nb_iterations=nb_gradient_iterations,dtype=dtype)
+        w  = train_robust_weights(training_models,x_rescaled,y_rescaled,lon_size,lat_size,notnan_idx,rank,lambda_,mu_,lr,nb_iterations=nb_gradient_iterations,dtype=dtype,verbose=verbose)
+
+    elif method == 'trace_norm':
+
+        # compute trace norm and ridge regression coefficient
+        w[np.ix_(notnan_idx,notnan_idx)]  = train_trace_norm(x_train_merged[:,notnan_idx], y_train_merged[:,notnan_idx], lambda_, nu_, dtype=dtype,verbose=verbose)
+
+    elif method == 'robust_trace_norm':
+
+        # compute trace norm and ridge regression coefficient
+        w  = train_robust_weights_trace_norm(training_models,x_rescaled,y_rescaled,lon_size,lat_size,notnan_idx,lambda_,mu_,nu_,lr,nb_iterations=nb_gradient_iterations,dtype=dtype,verbose=verbose)
 
     # Predictions on test set
     y_pred = torch.ones_like(x_test_merged,dtype=dtype)
@@ -49,17 +61,17 @@ def leave_one_out_single(model_out,x,y,vars,\
             
             if m != model_out:
 
-                y_pred_train[m] = torch.zeros(x_train[m].shape[0],time_period,lon_size*lat_size,dtype=dtype)
-                y_pred_train[m][:,:,notnan_idx] =  x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]
-                rmse_train[m] = torch.nanmean((y_pred_train[m] - y[m])**2,dtype=dtype)
+                y_pred_train[m] = torch.zeros(x_rescaled[m].shape[0],time_period,lon_size*lat_size,dtype=dtype)
+                y_pred_train[m][:,:,notnan_idx] =  x_rescaled[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]
+                rmse_train[m] = torch.nanmean((y_pred_train[m] - y_rescaled[m])**2,dtype=dtype)
     
-    return w, y_pred, y_test, rmse_train
+    return w, y_pred, y_test_merged, rmse_train
 
 
 
-def leave_one_out_procedure(x,y,vars,\
-                            lon_size,lat_size, notnan_idx, nan_idx,time_period=341,\
-                            method='ridge',rank=None,lambda_=1.0,mu_=1.0,\
+def leave_one_out_procedure(x,y,means,vars,\
+                            lon_size,lat_size, notnan_idx, nan_idx,time_period=34,\
+                            method='ridge',rank=None,lambda_=1.0,mu_=1.0,nu_=1.0,\
                             lr=1e-5,nb_gradient_iterations=20,dtype=torch.float32,verbose=False):
     """It runs the LOO procedure.
 
@@ -76,13 +88,14 @@ def leave_one_out_procedure(x,y,vars,\
     for idx_m, m in enumerate(x.keys()):
 
         # run leave one out
-        w[m], y_pred[m], y_test[m], training_loss[m] = leave_one_out_single(m,x,y,vars,\
+        w[m], y_pred[m], y_test[m], training_loss[m] = leave_one_out_single(m,x,y,means,vars,\
                                                             lon_size,lat_size,notnan_idx,nan_idx,time_period,\
-                                                            method,rank,lambda_,mu_,\
+                                                            method,rank,lambda_,mu_,nu_,\
                                                             lr,nb_gradient_iterations,dtype=dtype,verbose=verbose)
 
         
-        # compute mean rmse 
+
+        # compute the mean rmse 
         rmse_mean[m] = torch.nanmean((y_pred[m] - y_test[m])**2,dtype=dtype)         
     
         # print the rmse
@@ -92,11 +105,11 @@ def leave_one_out_procedure(x,y,vars,\
         models_tmp = list(x.keys())
         models_tmp.remove(m)
 
-        if method == 'robust':
+        if (method == 'robust') or (method=='robust_trace_norm'):
 
             # compute robust model weights
-            weights[m] = compute_weights(models_tmp,w[m],x,y,notnan_idx,lambda_,mu_, dtype=dtype) 
-
+            weights[m] = compute_weights(models_tmp,w[m],x,y,notnan_idx,mu_, dtype=dtype) 
+                                    
         else:
 
             # if we do not use the robust weight approach, then we compute uniform weights
@@ -109,7 +122,7 @@ def leave_one_out_procedure(x,y,vars,\
     for idx_m, m in enumerate(x.keys()):
         weights_tmp +=  torch.tensor(list(weights[m].values()),dtype=dtype)
 
-    weights_tmp = weights_tmp / (len(x.keys()))
+    weights_tmp = weights_tmp / len(x.keys())
 
     # Check that the sum of weights = 1
 

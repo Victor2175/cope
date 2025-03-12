@@ -84,7 +84,7 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
             data_reshaped[m][idx_r,:,nan_idx] = float('nan')
 
             # center the data with respect to the given mean across time
-            data_reshaped[m][idx_r,:,:] = data_reshaped[m][idx_r,:,:]
+            # data_reshaped[m][idx_r,:,:] = data_reshaped[m][idx_r,:,:]
 
         # compute the mean 
         means[m] = np.nanmean(data_reshaped[m],axis=0)
@@ -123,7 +123,6 @@ def compute_forced_response(data, lon_size, lat_size, nan_idx, time_period=34):
             # replace continent's grid cell values with NaNs
             y_tmp[idx_r,:,nan_idx] = float('nan')
     
-        
         # compute mean reference
         mean_spatial_ensemble = np.nanmean(y_tmp,axis=0)
 
@@ -174,7 +173,7 @@ def numpy_to_torch(x,y,means,vars, dtype=torch.float32):
 
     for idx_m,m in enumerate(x.keys()):
         x_tmp[m] = torch.from_numpy(x[m]).to(dtype)
-        y_tmp[m] = torch.from_numpy(x[m]).to(dtype)
+        y_tmp[m] = torch.from_numpy(y[m]).to(dtype)
         means_tmp[m] = torch.from_numpy(means[m]).to(dtype)
         vars_tmp[m] = torch.from_numpy(vars[m]).to(dtype)
         
@@ -194,7 +193,6 @@ def rescale_and_merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.fl
     """
     # merge runs for each model
     x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
-
 
     # compute mean (training scaler as mean across climate models)
     means_mean_merged = torch.mean(torch.stack([torch.mean(means[m],axis=0,dtype=dtype) for m in x.keys() if m != m_out]),axis=0,dtype=dtype)
@@ -227,14 +225,14 @@ def rescale_and_merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.fl
             training_models.append(m)
             if count_tmp ==0:
 
-                x_train = (x_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1))
-                y_train = (y_merged[m] - torch.mean(means[m],axis=0,dtype=dtype)) /torch.sqrt(vars[m].repeat(x[m].shape[0],1))
+                x_train = (x_merged[m]  - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1))
+                y_train = (y_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1))
                 count_tmp +=1
 
             else:
                 x_train = torch.cat([x_train, (x_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1)) ],dim=0)
                 y_train = torch.cat([y_train, (y_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1)) ],dim=0)
-            
+
     return training_models, x_train, y_train, x_test, y_test
 
 
@@ -246,6 +244,7 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
        Return:
     """
     # compute the test mean and variance mean as the mean of the variance for all training climate model.
+    # means_mean = torch.mean(torch.stack([means[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
     means_mean = torch.mean(torch.stack([torch.mean(means[m],axis=0) for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
     vars_mean = torch.mean(torch.stack([vars[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
 
@@ -260,7 +259,7 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
     for idx_m,m in enumerate(x.keys()):
 
         if m != m_out:
-            x_rescaled[m] = (x[m] - torch.mean(means[m],axis=0, dtype=dtype ))/torch.sqrt(vars[m])
+            x_rescaled[m] = (x[m] - torch.mean(means[m],axis=0, dtype=dtype))/torch.sqrt(vars[m])
             y_rescaled[m] = (y[m] - torch.mean(means[m],axis=0, dtype=dtype))/torch.sqrt(vars[m])
             training_models.append(m)
         
@@ -270,3 +269,20 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
             y_rescaled[m] = (y[m] - torch.mean(means[m],axis=0, dtype=dtype))/torch.sqrt(vars[m])
 
     return training_models, x_rescaled, y_rescaled
+
+def stack_runs_for_each_model(models,x,y):
+    """Stack all ensemble members for each model. This enables to create the big matrices X and Y.
+
+       Args:
+
+       Return:
+    """
+    # compute dictionary of rescaled data
+    x_rescaled = {}
+    y_rescaled = {}
+
+    for idx_m,m in enumerate(models):
+        x_rescaled[m] = x[m].view(-1,x[m].shape[0])
+        y_rescaled[m] = y[m].view(-1,x[m].shape[0])
+
+    return x_rescaled, y_rescaled
