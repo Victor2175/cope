@@ -39,19 +39,27 @@ def cross_validation_procedure(x,y,means,vars,\
                     w_tmp, rmse[(lambda_,mu_,1.0)], weights[(lambda_,mu_,1.0)], training_loss[(lambda_,mu_,1.0)] = \
                                                 leave_one_out_procedure(x,y,means,vars,\
                                                                         lon_size,lat_size, notnan_idx,nan_idx,time_period,\
-                                                                        method, rank, lambda_, mu_, nu_,\
+                                                                        method, rank, lambda_, mu_, 1.0,\
                                                                         lr,nb_gradient_iterations,dtype=dtype,verbose=verbose)
                 
                     # w_tmp is very big: we take the mean of it
                     w[(lambda_,mu_,1.0)] = torch.from_numpy(np.nanmean(np.array(list(w_tmp.values())), axis=0))
         else:
-            for idx_nu, nu_ in enumerate(nu_range):
-                w_tmp, rmse[(lambda_,1.0,nu_)], weights[(lambda_,1.0,nu_)], training_loss[(lambda_,1.0,nu_)] = \
+            if method == 'trace_norm':
+                for idx_nu, nu_ in enumerate(nu_range):
+                    w_tmp, rmse[(lambda_,1.0,nu_)], weights[(lambda_,1.0,nu_)], training_loss[(lambda_,1.0,nu_)] = \
+                                                leave_one_out_procedure(x,y,means,vars,\
+                                                                        lon_size,lat_size, notnan_idx,nan_idx,time_period,\
+                                                                        method, rank, lambda_, mu_range[0],nu_,\
+                                                                        lr,nb_gradient_iterations,dtype=dtype,verbose=verbose)
+                    w[(lambda_,1.0,nu_)] = torch.from_numpy(np.nanmean(np.array(list(w_tmp.values())), axis=0))
+            else:
+                w_tmp, rmse[(lambda_,1.0,1.0)], weights[(lambda_,1.0,1.0)], training_loss[(lambda_,1.0,1.0)] = \
                                             leave_one_out_procedure(x,y,means,vars,\
                                                                     lon_size,lat_size, notnan_idx,nan_idx,time_period,\
-                                                                    'ridge', rank, lambda_, mu_range[0],nu_,\
+                                                                    method, rank, lambda_, mu_range[0],nu_range[0],\
                                                                     lr,nb_gradient_iterations,dtype=dtype,verbose=verbose)
-                w[(lambda_,1.0,nu_)] = torch.from_numpy(np.nanmean(np.array(list(w_tmp.values())), axis=0))
+                w[(lambda_,1.0,1.0)] = torch.from_numpy(np.nanmean(np.array(list(w_tmp.values())), axis=0))
                 
     return w,rmse,weights, training_loss
     

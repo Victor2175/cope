@@ -83,14 +83,13 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
             # replace continent's grid cell values with NaNs
             data_reshaped[m][idx_r,:,nan_idx] = float('nan')
 
-            # center the data with respect to the given mean across time
-            # data_reshaped[m][idx_r,:,:] = data_reshaped[m][idx_r,:,:]
-
         # compute the mean 
-        means[m] = np.nanmean(data_reshaped[m],axis=0)
+        means[m] = np.nanmean(data_reshaped[m],axis=(0,1))
+        # means[m] = np.nanmean(data_reshaped[m],axis=0)
 
         # compute the variance
-        vars[m] = np.nanvar(data_reshaped[m],axis=0)
+        vars[m] = np.nanvar(data_reshaped[m],axis=(0,1))
+        # vars[m] = np.nanvar(data_reshaped[m],axis=0)
         
     return data_reshaped, means, vars
 
@@ -195,17 +194,23 @@ def rescale_and_merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.fl
     x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
 
     # compute mean (training scaler as mean across climate models)
-    means_mean_merged = torch.mean(torch.stack([torch.mean(means[m],axis=0,dtype=dtype) for m in x.keys() if m != m_out]),axis=0,dtype=dtype)
+    # means_mean_merged = torch.mean(torch.stack([torch.mean(means[m],axis=0,dtype=dtype) for m in x.keys() if m != m_out]),axis=0,dtype=dtype)
+    means_mean_merged_tmp = torch.mean(torch.stack([means[m] for m in x.keys() if m != m_out]),axis=0,dtype=dtype)
     
     # compute variance (training scaler as mean across climate models)
     vars_mean_merged_tmp = torch.mean(torch.stack([vars[m] for m in x.keys() if m != m_out]),axis=0,dtype=dtype)
+    # vars_mean_merged_tmp = torch.mean(torch.stack([vars[m] for m in x.keys() if m != m_out]),axis=0,dtype=dtype)
 
     # duplicate the variance for each run of the test model 
     d = x[m_out].shape[2]
     time_period = x[m_out].shape[1]
 
     # merge variance for each run of the test model
-    vars_mean_merged = vars_mean_merged_tmp.repeat(x[m_out].shape[0],1)
+    means_mean_merged = means_mean_merged_tmp.repeat(x[m_out].shape[0]*x[m_out].shape[1],1)
+    vars_mean_merged = vars_mean_merged_tmp.repeat(x[m_out].shape[0]*x[m_out].shape[1],1)
+    # means_mean_merged = means_mean_merged_tmp.repeat(x[m_out].shape[0],1)
+    # vars_mean_merged = vars_mean_merged_tmp.repeat(x[m_out].shape[0],1)
+
 
     ################ We construct X, Y in R^{grid x runs*time steps}
 
@@ -213,7 +218,7 @@ def rescale_and_merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.fl
     x_test = (x_merged[m_out] - means_mean_merged)/torch.sqrt(vars_mean_merged)
 
     # We construct Y_test in R^{grid x runs*time steps} using TRUE scaler
-    y_test = (y_merged[m_out] - torch.mean(means[m_out],axis=0,dtype=dtype))/torch.sqrt(vars_mean_merged)
+    y_test = (y_merged[m_out] - means[m_out])/torch.sqrt(vars[m_out])
 
     # Concatenate all models to build the matrix X
     training_models = []
@@ -225,13 +230,52 @@ def rescale_and_merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.fl
             training_models.append(m)
             if count_tmp ==0:
 
-                x_train = (x_merged[m]  - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1))
-                y_train = (y_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1))
+                x_train = (x_merged[m]  - means[m])/torch.sqrt(vars[m].repeat(x[m].shape[0]*x[m].shape[1],1))
+                y_train = (y_merged[m] -  means[m])/torch.sqrt(vars[m].repeat(x[m].shape[0]*x[m].shape[1],1))
                 count_tmp +=1
 
             else:
-                x_train = torch.cat([x_train, (x_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1)) ],dim=0)
-                y_train = torch.cat([y_train, (y_merged[m] - torch.mean(means[m],axis=0,dtype=dtype))/torch.sqrt(vars[m].repeat(x[m].shape[0],1)) ],dim=0)
+                x_train = torch.cat([x_train, (x_merged[m] - means[m])/torch.sqrt(vars[m].repeat(x[m].shape[0]*x[m].shape[1],1)) ],dim=0)
+                y_train = torch.cat([y_train, (y_merged[m] - means[m])/torch.sqrt(vars[m].repeat(x[m].shape[0]*x[m].shape[1],1)) ],dim=0)
+
+    return training_models, x_train, y_train, x_test, y_test
+
+
+def merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
+    """Concatenate training sets for all models except model m. This enables to create the big matrices X and Y.
+        Unnormalized data.
+       Args:
+
+       Return:
+    """
+    # merge runs for each model
+    x_merged, y_merged, vars_merged = merge_runs(x,y,vars)
+
+    ################ We construct X, Y in R^{grid x runs*time steps}
+
+    # We construct X_test in R^{grid x runs*time steps} using scaler computed in the training set
+    x_test = x_merged[m_out]
+
+    # We construct Y_test in R^{grid x runs*time steps} using TRUE scaler
+    y_test = y_merged[m_out]
+
+    # Concatenate all models to build the matrix X
+    training_models = []
+    count_tmp = 0
+    
+    for idx_m,m in enumerate(x.keys()):
+        
+        if m != m_out:
+            training_models.append(m)
+            if count_tmp ==0:
+
+                x_train = x_merged[m] 
+                y_train = y_merged[m] 
+                count_tmp +=1
+
+            else:
+                x_train = torch.cat([x_train, x_merged[m]],dim=0)
+                y_train = torch.cat([y_train, y_merged[m]],dim=0)
 
     return training_models, x_train, y_train, x_test, y_test
 
@@ -245,8 +289,9 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
     """
     # compute the test mean and variance mean as the mean of the variance for all training climate model.
     # means_mean = torch.mean(torch.stack([means[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
-    means_mean = torch.mean(torch.stack([torch.mean(means[m],axis=0) for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
+    means_mean = torch.mean(torch.stack([means[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
     vars_mean = torch.mean(torch.stack([vars[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
+
 
     # compute dictionary of rescaled data
     x_rescaled = {}
@@ -259,14 +304,14 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
     for idx_m,m in enumerate(x.keys()):
 
         if m != m_out:
-            x_rescaled[m] = (x[m] - torch.mean(means[m],axis=0, dtype=dtype))/torch.sqrt(vars[m])
-            y_rescaled[m] = (y[m] - torch.mean(means[m],axis=0, dtype=dtype))/torch.sqrt(vars[m])
+            x_rescaled[m] = (x[m] - means[m] )/torch.sqrt(vars[m])
+            y_rescaled[m] = (y[m] - means[m] )/torch.sqrt(vars[m])
             training_models.append(m)
         
         else:
 
             x_rescaled[m] = (x[m] - means_mean)/torch.sqrt(vars_mean)
-            y_rescaled[m] = (y[m] - torch.mean(means[m],axis=0, dtype=dtype))/torch.sqrt(vars[m])
+            y_rescaled[m] = (y[m] - means[m])/torch.sqrt(vars[m])
 
     return training_models, x_rescaled, y_rescaled
 

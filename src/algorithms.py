@@ -259,7 +259,7 @@ def train_trace_norm(X,Y,lambda_,nu_,dtype=torch.float32,verbose=False):
        SingValue Soft-thresholding( (lambda I + X^T X )^{-1} X^T Y, nu_/lambda ))
     """
     W = ridge_regression(X,Y,lambda_,dtype=dtype,verbose=verbose)
-    return singular_value_thresholding(W, nu_/lambda_)
+    return singular_value_thresholding( W, nu_/lambda_)
 
 ######### Functions to optimize robust weight model with ridge penalty and trace norm penalty  #########
 # 5 - $\min_{W} \max_{\alpha \in \Delta} \sum_{m} \alpha_m \Vert \Sigma^{-1/2}(Y_m - X_m W) \Vert_F^2 + \lambda \Vert W \Vert_F^2 + \nu \Vert W \Vert_{*}$ 
@@ -373,7 +373,8 @@ def prediction(x, W, notnan_idx,nan_idx,dtype=torch.float32):
     Returns:
         - y_pred: torch.tensor (runs, time series length, grid size)
     """    
-    y_pred = torch.nan_to_num(x) @  W
+    y_pred = torch.zeros_like(x)
+    y_pred[:,:,notnan_idx] = x[:,:,notnan_idx] @  W[np.ix_(notnan_idx, notnan_idx)]
     y_pred[:,:,nan_idx] = float('nan')
     
     return y_pred
