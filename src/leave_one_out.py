@@ -1,4 +1,4 @@
-from preprocessing import rescale_and_merge_training_and_test_sets, rescale_training_and_test_sets
+from preprocessing import rescale_and_merge_training_and_test_sets, rescale_training_and_test_sets, merge_training_and_test_sets
 import torch
 import numpy as np
 from algorithms import ridge_regression, ridge_regression_low_rank, \
@@ -19,7 +19,7 @@ def leave_one_out_single(model_out,x,y,means,vars,\
     w = torch.zeros(lon_size * lat_size, lon_size * lat_size,dtype=dtype)
     training_models, x_rescaled, y_rescaled = rescale_training_and_test_sets(model_out,x,y,means,vars,dtype=dtype)
     _, x_train_merged, y_train_merged, x_test_merged, y_test_merged = rescale_and_merge_training_and_test_sets(model_out,x,y,means,vars,dtype=dtype)
-    
+
 
     # if method = ridge, then we train the ridge regression model
     if (method == 'ridge') and (rank is None):
@@ -48,9 +48,9 @@ def leave_one_out_single(model_out,x,y,means,vars,\
         w  = train_robust_weights_trace_norm(training_models,x_rescaled,y_rescaled,lon_size,lat_size,notnan_idx,lambda_,mu_,nu_,lr,nb_iterations=nb_gradient_iterations,dtype=dtype,verbose=verbose)
 
     # Predictions on test set
-    y_pred = torch.ones_like(x_test_merged,dtype=dtype)
-    y_pred[:,nan_idx] = float('nan')
-    y_pred[:,notnan_idx] = x_test_merged[:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]
+    y_pred = torch.zeros_like(x[model_out],dtype=dtype)
+    y_pred[:,:,nan_idx] = float('nan')
+    y_pred[:,:,notnan_idx] = x[model_out][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]
 
     # Compute training errors
     y_pred_train = {}
@@ -61,11 +61,11 @@ def leave_one_out_single(model_out,x,y,means,vars,\
             
             if m != model_out:
 
-                y_pred_train[m] = torch.zeros(x_rescaled[m].shape[0],time_period,lon_size*lat_size,dtype=dtype)
-                y_pred_train[m][:,:,notnan_idx] =  x_rescaled[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]
-                rmse_train[m] = torch.nanmean((y_pred_train[m] - y_rescaled[m])**2,dtype=dtype)
+                y_pred_train[m] = torch.zeros(x[m].shape[0],time_period,lon_size*lat_size,dtype=dtype)
+                y_pred_train[m][:,:,notnan_idx] =  x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]
+                rmse_train[m] = torch.mean((y_pred_train[m][:,:,notnan_idx] - y[m][:,:,notnan_idx])**2/vars[m][notnan_idx] ,dtype=dtype)
     
-    return w, y_pred, y_test_merged, rmse_train
+    return w, y_pred, y[model_out], rmse_train
 
 
 
@@ -94,9 +94,8 @@ def leave_one_out_procedure(x,y,means,vars,\
                                                             lr,nb_gradient_iterations,dtype=dtype,verbose=verbose)
 
         
-
         # compute the mean rmse 
-        rmse_mean[m] = torch.nanmean((y_pred[m] - y_test[m])**2,dtype=dtype)         
+        rmse_mean[m] = torch.mean((y_pred[m][:,:,notnan_idx] - y_test[m][:,:,notnan_idx])**2 / vars[m][:,:,notnan_idx],dtype=dtype)         
     
         # print the rmse
         print('RMSE (mean) on model ', m, ' : ', rmse_mean[m].item())

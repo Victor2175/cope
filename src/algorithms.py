@@ -1,6 +1,8 @@
 import torch     # type: ignore
 import numpy as np
 
+######### TO DO: REWRITE THE ALGFORITHMs with variances #########
+
 # 1- Ridge regression problem : 
 # $\min_{W} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2$
 
@@ -164,7 +166,7 @@ def train_robust_weights(models,x,y,lon_size,lat_size,notnan_idx,\
        Returns:
         - w: torch.tensor, regressor matrix 
     """
-    
+    # initialize regressor matrix
     w = torch.zeros(lon_size*lat_size,lon_size*lat_size, dtype=dtype)
     w_old = torch.zeros(lon_size*lat_size,lon_size*lat_size, dtype=dtype)
     
