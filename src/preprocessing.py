@@ -38,7 +38,8 @@ def data_processing(data,longitude,latitude,max_models = 15):
             for idx_r, r in enumerate(data[m].keys()):
 
                 # Upscaling of raw data 
-                data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][131:,:,:],(1,2,2))
+                # data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][131:,:,:],(1,2,2))
+                data_processed[m][r] = data_processed[m][r][131:,:,:]
                 data_processed[m][r] = data_processed[m][r][:,latitude<=60,:]
 
                 # capture nan indices and record the union of nans
@@ -92,13 +93,27 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
         # compute the mean  ########HERERER
         means[m] = np.nanmean(data_reshaped[m],axis=1) - np.nanmean(data_reshaped[m],axis=(0,1))
         means[m] = np.expand_dims(means[m],axis=1)
+        # means[m] = np.nanmean(data_reshaped[m],axis=(0,1))
+        # means[m] = np.expand_dims(means[m],axis=(0,1))
         means[m] = np.repeat(means[m], time_period, axis=1) 
+        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
+
 
         # compute the variance
         vars[m] = np.nanvar(data_reshaped[m],axis=(0,1))
         vars[m] = np.expand_dims(vars[m],axis=(0,1))
         vars[m] = np.repeat(vars[m], time_period, axis=1)
-        vars[m] = np.repeat(vars[m], data_reshaped[m].shape[0], axis=0) 
+        vars[m] = np.repeat(vars[m], data_reshaped[m].shape[0], axis=0)
+
+
+        # little test: IS THE TIME CENTERING CORRECT??
+        # means[m] = np.nanmean(data_reshaped[m],axis=0)
+        # means[m] = np.expand_dims(means[m],axis=0)
+        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
+
+        # vars[m] = np.nanvar(data_reshaped[m],axis=0)
+        # vars[m] = np.expand_dims(vars[m],axis=0)
+        # vars[m] = np.repeat(vars[m], data_reshaped[m].shape[0], axis=0) 
 
 
         # # center the data
@@ -248,7 +263,7 @@ def merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
        Return:
     """
     # merge runs for each model
-    x_merged, y_merged, vars_merged = merge_runs(x.copy(),y.copy(),vars)
+    x_merged, y_merged, means_merged, vars_merged = merge_runs(x.copy(),y.copy(),means,vars)
 
     ################ We construct X, Y in R^{grid x runs*time steps}
 
@@ -287,9 +302,6 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
        Return:
     """
     # compute the test mean and variance mean as the mean of the variance for all training climate model.
-    # means_mean = torch.mean(torch.stack([means[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
-    # vars_mean = torch.mean(torch.stack([vars[m] for m in x.keys() if m != m_out]),axis=0, dtype=dtype)
-
 
     # compute dictionary of rescaled data
     x_rescaled = {}
@@ -312,19 +324,18 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
 
     return training_models, x_rescaled, y_rescaled
 
-# def stack_runs_for_each_model(models,x,y):
-#     """Stack all ensemble members for each model. This enables to create the big matrices X and Y.
 
-#        Args:
+def scale_and_merge(m_out,x,y,means,vars,dtype=torch.float32):
 
-#        Return:
-#     """
-#     # compute dictionary of rescaled data
-#     x_rescaled = {}
-#     y_rescaled = {}
+    x_tmp = x.copy()
+    y_tmp = y.copy()
 
-#     for idx_m,m in enumerate(models):
-#         x_rescaled[m] = x[m].view(-1,x[m].shape[0])
-#         y_rescaled[m] = y[m].view(-1,x[m].shape[0])
+    for idx_m,m in enumerate(list(x.keys())):
+        if m != m_out:
+            x_tmp[m] = x_tmp[m]/np.sqrt(x_tmp[m].shape[0])
+            y_tmp[m] = y_tmp[m]/np.sqrt(y_tmp[m].shape[0])
+    
+    
+    training_models, x_train, y_train, x_test, y_test =  merge_training_and_test_sets(m_out,x_tmp,y_tmp,means,vars,dtype=dtype)
 
-#     return x_rescaled, y_rescaled
+    return training_models, x_train, y_train, x_test, y_test
