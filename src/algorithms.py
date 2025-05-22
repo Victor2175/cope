@@ -168,7 +168,6 @@ def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0,dtype=torch.flo
     
     # get computation time
     for idx_m, m in enumerate(models):
-        print("Compute gradient for model ", m)
 
         # compute -2X_{m,r}^T (Y_{m,r}^T - X_{m,r}^T W)
         res[idx_m][np.ix_(notnan_idx,notnan_idx)] = - 2*torch.mean(torch.bmm(torch.transpose(x[m][:,:,notnan_idx], 1,2) , \
@@ -224,11 +223,8 @@ def train_robust_weights(models,x,y,lon_size,lat_size,notnan_idx,\
         # save old parameter
         w_old = w.clone().detach()
 
-        print ("Compute gradient at iteration ", it)
         # compute gradient
         grad = compute_gradient(models,x,y,w_tmp,notnan_idx,lambda_,mu_,dtype=dtype)
-        
-        print("Gradient computed")
 
         # update the variable w
         w = w_tmp - lr * grad

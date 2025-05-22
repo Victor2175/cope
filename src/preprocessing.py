@@ -38,8 +38,8 @@ def data_processing(data,longitude,latitude,max_models = 15):
             for idx_r, r in enumerate(data[m].keys()):
 
                 # Upscaling of raw data 
-                # data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][131:,:,:],(1,2,2))
-                data_processed[m][r] = data_processed[m][r][131:,:,:]
+                data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][:,:,:],(1,2,2))
+                # data_processed[m][r] = data_processed[m][r][131:,:,:]
                 data_processed[m][r] = data_processed[m][r][:,latitude<=60,:]
 
                 # capture nan indices and record the union of nans
@@ -85,41 +85,56 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
             # flatten the data
             data_reshaped[m][idx_r,:,:] = data[m][r].copy().reshape(time_period, lat_size*lon_size)
             # replace continent's grid cell values with NaNs
-            # data_reshaped[m][idx_r,:,:] = data_reshaped[m][idx_r,:,:] - np.nanmean(data_reshaped[m][idx_r,:,:],axis=0)
+            # data_reshaped[m][idx_r,:,:] = data_reshaped[m][idx_r,:,:] - np.expand_dims(np.nanmean(data_reshaped[m][idx_r,:,:],axis=1),axis=1).repeat(lon_size*lat_size,axis=1) 
 
             # replace continent's grid cell values with NaNs
             data_reshaped[m][idx_r,:,nan_idx] = float('nan')
 
         # compute the mean  ########HERERER
-        means[m] = np.nanmean(data_reshaped[m],axis=1) - np.nanmean(data_reshaped[m],axis=(0,1))
-        means[m] = np.expand_dims(means[m],axis=1)
-        # means[m] = np.nanmean(data_reshaped[m],axis=(0,1))
-        # means[m] = np.expand_dims(means[m],axis=(0,1))
+        means[m] = np.nanmean(data_reshaped[m],axis=(0,1))
+        means[m] = np.expand_dims(means[m],axis=(0,1))
         means[m] = np.repeat(means[m], time_period, axis=1) 
-        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
+        means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
 
 
         # compute the variance
-        vars[m] = np.nanvar(data_reshaped[m],axis=(0,1))
-        vars[m] = np.expand_dims(vars[m],axis=(0,1))
-        vars[m] = np.repeat(vars[m], time_period, axis=1)
+        vars[m] = np.nanvar(data_reshaped[m],axis=(0))
+        vars[m] = np.expand_dims(vars[m],axis=(0))
         vars[m] = np.repeat(vars[m], data_reshaped[m].shape[0], axis=0)
 
 
-        # little test: IS THE TIME CENTERING CORRECT??
-        # means[m] = np.nanmean(data_reshaped[m],axis=0)
-        # means[m] = np.expand_dims(means[m],axis=0)
-        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
-
-        # vars[m] = np.nanvar(data_reshaped[m],axis=0)
-        # vars[m] = np.expand_dims(vars[m],axis=0)
-        # vars[m] = np.repeat(vars[m], data_reshaped[m].shape[0], axis=0) 
-
-
         # # center the data
-        data_reshaped[m] = data_reshaped[m] - np.expand_dims(np.nanmean(data_reshaped[m],axis=1),axis=1).repeat(time_period,axis=1)
+        data_reshaped[m] = data_reshaped[m] 
         
     return data_reshaped, means, vars
+
+
+def compute_smooth_variance(data, smoothing=0.1):
+    """ Compute smoothed variance.
+
+        Args:
+            - data: dictionary, preprocessed data
+            - time_period: Int, time series lentgh (target period 1981-2015)
+            
+        Return:
+            - data_anomalies: dictionary of centered (according to a specific definition) data
+    """
+    # compute the forced response
+    vars = {}
+
+    for idx_m,m in enumerate(data.keys()):
+        
+        var_tmp= np.nanvar(data[m],axis=0)
+        sigma0 = np.nanmedian(var_tmp,axis=1).expand_dims(axis=1).repeat(var_tmp.shape[1],axis=1)
+
+        # compute the smoothed variance
+        vars[m] = smoothing*sigma0 + (1-smoothing)*var_tmp
+
+        print('Shape of the variance :',vars[m].shape)
+
+    return vars
+
+
 
 
 def compute_forced_response(data, lon_size, lat_size, nan_idx, time_period=34):
@@ -155,7 +170,7 @@ def compute_forced_response(data, lon_size, lat_size, nan_idx, time_period=34):
 
         # copmpute forced response (the same for each run)
         for idx_r, r in enumerate(data[m].keys()):              
-            data_forced_response[m][idx_r,:,:] = mean_spatial_ensemble - np.nanmean(y_tmp,axis=(0,1))
+            data_forced_response[m][idx_r,:,:] = mean_spatial_ensemble 
 
     return data_forced_response
 

@@ -21,7 +21,7 @@ def leave_one_out_single(model_out,x,y,means,vars,\
     # _, x_train_merged, y_train_merged, x_test_merged, y_test_merged = scale_and_merge(model_out,x_rescaled,y_rescaled,means,vars,dtype=torch.float32)
 
     # training_models, x_rescaled, y_rescaled = rescale_training_and_test_sets(model_out,x,y,means,vars,dtype=dtype)
-    _,  x_train_merged, y_train_merged, x_test_merged, y_test_merged = scale_and_merge(model_out,x,y,means,vars,dtype=dtype)
+    _,  x_train_merged, y_train_merged, x_test_merged, y_test_merged = scale_and_merge(model_out,x_rescaled,y_rescaled,means,vars,dtype=dtype)
 
     # if method = ridge, then we train the ridge regression model
     if (method == 'ridge') and (rank is None):
