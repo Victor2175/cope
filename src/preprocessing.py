@@ -40,7 +40,7 @@ def data_processing(data,longitude,latitude,max_models = 15):
                 # Upscaling of raw data 
                 data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][:,:,:],(1,2,2))
                 # data_processed[m][r] = data_processed[m][r][131:,:,:]
-                data_processed[m][r] = data_processed[m][r][:,latitude<=60,:]
+                # data_processed[m][r] = data_processed[m][r][:,:,:]
 
                 # capture nan indices and record the union of nans
                 nan_idx_tmp = list(np.where(np.isnan(data_processed[m][r][0,:,:].ravel())==True)[0])
@@ -49,7 +49,7 @@ def data_processing(data,longitude,latitude,max_models = 15):
     # get longitude and latitude size
     lon_size = longitude.shape[0]
     lat_size = latitude.shape[0]    
-    lat_size = latitude[latitude <=60].shape[0]
+    # lat_size = latitude[latitude <=60].shape[0]
 
 
     # define not nan indices (useful to ease the computations)
