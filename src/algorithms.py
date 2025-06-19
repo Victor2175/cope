@@ -35,41 +35,6 @@ def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32,verbose=False):
     return W_ols
 
 
-def ridge_regression_with_temporal_smoothing(X, Y, lambda_=1.0,dtype=torch.float32,verbose=False):
-    """
-    Computes the closed-form solution for reduced rank regression.
-    
-    Args:
-        X (torch.Tensor): Predictor matrix of shape (t, n, p).
-        Y (torch.Tensor): Response matrix of shape (t, n, q).
-        lambda_ (scalar): Ridge penalty coefficient.
-        
-    Returns:
-        U (torch.Tensor): Low-rank predictor coefficients of shape (p, rank).
-        V (torch.Tensor): Low-rank response coefficients of shape (q, rank).
-    """
-    W_ols = torch.zeros_like(X,dtype=dtype)
-
-    # loop over time
-    for t in range(X.shape[0]):
-
-        # compute Penroe Morose pseudo inverse of X^T @ X
-        P = torch.linalg.inv(X[t,:,:].T @ X[t,:,:] + lambda_ * torch.eye(X.shape[2],dtype=dtype))
-    
-        # compute ordinary least square solution 
-        W_ols[t,:,:] = P @ X[t,:,:].T @ Y[t,:,:]
-
-
-    
-
-    # print loss function 
-    # if verbose:
-    #     loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
-    #     print("Loss function: ", loss.item())
-    
-    return W_ols
-
-
 # 2- Low-rank ridge regression problem: 
 # $\min_{W \colon \mathrm{rank}(W) \leq r} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2$
 
@@ -112,6 +77,70 @@ def ridge_regression_low_rank(X, Y, rank=5.0, lambda_=1.0,dtype=torch.float32,ve
         print("Loss function: ", loss.item())
 
     return W_rrr
+
+
+# create a laplacian matric of the spatial grid latitude x longitude
+
+def create_laplacian_matrix(latitude, longitude):
+    """
+    Create a Laplacian matrix for the spatial grid.
+    Args:
+        latitude: numpy array of shape (n_latitude,)
+        longitude: numpy array of shape (n_longitude,)
+    Returns:
+        Laplacian matrix of shape (n_latitude * n_longitude, n_latitude * n_longitude)
+    """
+    n_lat = latitude.shape[0]
+    n_lon = longitude.shape[0]
+    
+    # Create the Laplacian matrix
+    laplacian = np.zeros((n_lat * n_lon, n_lat * n_lon), dtype=np.float32)
+    
+    for i in range(n_lat):
+        for j in range(n_lon):
+            idx = i * n_lon + j
+            laplacian[idx, idx] = -4  # center point
+            
+            if i > 0:  # north
+                laplacian[idx, idx - n_lon] = 1
+            if i < n_lat - 1:  # south
+                laplacian[idx, idx + n_lon] = 1
+            if j > 0:  # west
+                laplacian[idx, idx - 1] = 1
+            if j < n_lon - 1:  # east
+                laplacian[idx, idx + 1] = 1
+    
+    return torch.from_numpy(laplacian).to(torch.float32)
+
+
+def laplacian_ridge_regression(X, Y, latitude, longitude, lambda_=1.0, nu_=1.0,dtype=torch.float32,verbose=False):
+    """
+    Computes the closed-form solution for reduced rank regression.
+    
+    Args:
+        X (torch.Tensor): Predictor matrix of shape (n, p).
+        Y (torch.Tensor): Response matrix of shape (n, q).
+        lambda_ (scalar): Ridge penalty coefficient.
+        
+    Returns:
+        U (torch.Tensor): Low-rank predictor coefficients of shape (p, rank).
+        V (torch.Tensor): Low-rank response coefficients of shape (q, rank).
+    """
+    
+    L = create_laplacian_matrix(latitude, longitude)
+
+    # compute Penroe Morose pseudo inverse of X^T @ X
+    P = torch.linalg.inv(X.T @ X @ (nu_* L + torch.eye(X.shape[1],dtype=dtype) ) + lambda_ * torch.eye(X.shape[1],dtype=dtype))
+    
+    # compute ordinary least square solution 
+    W_ols = P @ X.T @ Y
+
+    # print loss function 
+    if verbose:
+        loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
+        print("Loss function: ", loss.item())
+    
+    return W_ols
 
 # Function that returns the low-rank projection of a given matrix M using the Eckart–Young–Mirsky theorem.
 # Proj_(rank <= r)(M) = U_r S_r V_r^T
@@ -170,11 +199,11 @@ def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0,dtype=torch.flo
     for idx_m, m in enumerate(models):
 
         # compute -2X_{m,r}^T (Y_{m,r}^T - X_{m,r}^T W)
-        res[idx_m][np.ix_(notnan_idx,notnan_idx)] = - 2*torch.mean(torch.bmm(torch.transpose(x[m][:,:,notnan_idx], 1,2) , \
+        res[idx_m][np.ix_(notnan_idx,notnan_idx)] = - 2*torch.sum(torch.bmm(torch.transpose(x[m][:,:,notnan_idx], 1,2) , \
                                                         y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]),dim=0, dtype=dtype)
 
         # compute the exponential term
-        res_sumexp[idx_m] = (1/mu_)*torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2)
+        res_sumexp[idx_m] = (1/mu_)*torch.sum(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2)
         
     res_sumexp = torch.nn.functional.softmax(res_sumexp,dim=0, dtype=dtype)
     
@@ -293,17 +322,75 @@ def compute_weights(models,w,x,y,notnan_idx,mu_=1.0,dtype=torch.float32):
 
 def singular_value_thresholding(M, nu_):
     """Singular Value Thresholding (SVT) operator: M -> U * S_nu * V^T"""
-    U, S, V = torch.svd(M)
-    S_nu = torch.clamp(S - nu_, min=0)  # Soft-thresholding on singular values
+    U, S, V = torch.linalg.svd(M, full_matrices=True)
+    S_nu = torch.sign(S)*torch.max(torch.abs(S) - nu_,torch.tensor(0.0))  # Soft-thresholding on singular values
     return U @ torch.diag(S_nu) @ V.t()
 
-def train_trace_norm(X,Y,lambda_,nu_,dtype=torch.float32,verbose=False):
-    """Compute the proximal operator of the elastic net penalty.
-       argmin_(W) 1/2 ||Y - XW||_F^2 + lambda_ ||W||_F^2 + nu_ ||W||_* = 
-       SingValue Soft-thresholding( (lambda I + X^T X )^{-1} X^T Y, nu_/lambda ))
+def proximal_algorithm_ridge_trace_penalty(X,Y,lambda_,nu_,lr=0.1,nb_iterations=10,dtype=torch.float32,verbose=False):
+    """This function runs the proximal gradient algorithm to solve the optimization problem min f(W) + g(W) 
+      where f(W) = 1/2 ||Y - XW||_F^2 and g(W) = lambda * ||W||_F^2 + nu * ||W||_*
+
+    Args:
+        - X, Y: input-output pair
+        - lambda_: ridge penalty coefficient
+        - nu_: trace norm penalty coefficient
+        - lr: learning rate
+        - nb_iterations: number of iterations
+
+    Returns:
+        - w: optimal regressor matrix
+        - training_loss: training loss
     """
-    W = ridge_regression(X,Y,lambda_,dtype=dtype,verbose=verbose)
-    return singular_value_thresholding( W, nu_/lambda_)
+    w = torch.zeros(X.shape[1],Y.shape[1], dtype=dtype)
+    loss = torch.zeros(nb_iterations, dtype=dtype)
+
+    for it in range(nb_iterations):
+
+        # compute gradient
+        grad = X.T @ (X @ w - Y) + lambda_ * w
+
+        # update the variable w
+        w = w - lr * grad
+
+        # compute proximal operator of trace norm and frobenius norm
+        w = singular_value_thresholding(w, lr*nu_)
+
+        lr = lr/2
+
+        if verbose==True:
+            # compute training loss
+            obj = 0.5 * torch.norm(Y - X @ w,p='fro')**2 + lambda_ * torch.norm(w,p='fro')**2 + nu_ * torch.norm(w,p='nuc')
+            loss[it] = obj.item()
+            print("Iteration ", it,  ": Loss function : ", obj.item())
+
+    return w, loss
+
+def train_trace_norm_ridge(X,Y,lambda_=1.0,nu_=1.0,dtype=torch.float32,verbose=False):
+
+    """This function runs the proximal gradient algorithm to solve the optimization problem min f(W) + g(W) 
+      where f(W) = 1/2 ||Y - XW||_F^2 and g(W) = lambda * ||W||_F^2 + nu * ||W||_*
+
+    Args:
+        - X, Y: input-output pair
+        - lambda_: ridge penalty coefficient
+        - nu_: trace norm penalty coefficient
+
+    Returns:
+        - w: optimal regressor matrix
+    """
+    w = torch.zeros(X.shape[1],Y.shape[1], dtype=dtype)
+
+    # compute closed-form solution
+    P = torch.linalg.inv(X.T @ X + lambda_ * torch.eye(X.shape[1],dtype=dtype))
+    w = singular_value_thresholding(P @ X.T @ Y, nu_/lambda_)
+
+    if verbose==True:
+        # compute training loss
+        obj = 0.5 * torch.norm(Y - X @ w,p='fro')**2 + lambda_ * torch.norm(w,p='fro')**2 + nu_ * torch.norm(w,p='nuc')
+        print("Loss function : ", obj.item())
+
+    return w
+
 
 ######### Functions to optimize robust weight model with ridge penalty and trace norm penalty  #########
 # 5 - $\min_{W} \max_{\alpha \in \Delta} \sum_{m} \alpha_m \Vert \Sigma^{-1/2}(Y_m - X_m W) \Vert_F^2 + \lambda \Vert W \Vert_F^2 + \nu \Vert W \Vert_{*}$ 
@@ -315,11 +402,11 @@ def frobenius_prox(x,lambda_):
 
 def soft_thresholding(x,lambda_):
     """Soft-thresholding operator"""
-    return torch.sign(x) * torch.max(torch.abs(x) - lambda_, torch.zeros_like(x))
+    return torch.sign(x) * torch.max(torch.abs(x) - lambda_, torch.tensor(0.0))
 
 def frobenius_and_trace_norm_prox(x,lambda_, nu_):
     """Proximal operator for the nuclear norm"""
-    U, S, V = torch.svd(x)
+    U, S, V = torch.linalg.svd(x, full_matrices=False)
     S = soft_thresholding(S,nu_)
     # S = frobenius_prox(S,lambda_)
     return U @ torch.diag(S) @ V.t()

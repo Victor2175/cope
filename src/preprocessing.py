@@ -39,8 +39,8 @@ def data_processing(data,longitude,latitude,max_models = 15):
 
                 # Upscaling of raw data 
                 data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][:,:,:],(1,2,2))
-                # data_processed[m][r] = data_processed[m][r][131:,:,:]
-                # data_processed[m][r] = data_processed[m][r][:,:,:]
+                data_processed[m][r] = data_processed[m][r][131:,:,:]
+
 
                 # capture nan indices and record the union of nans
                 nan_idx_tmp = list(np.where(np.isnan(data_processed[m][r][0,:,:].ravel())==True)[0])
@@ -49,8 +49,6 @@ def data_processing(data,longitude,latitude,max_models = 15):
     # get longitude and latitude size
     lon_size = longitude.shape[0]
     lat_size = latitude.shape[0]    
-    # lat_size = latitude[latitude <=60].shape[0]
-
 
     # define not nan indices (useful to ease the computations)
     notnan_idx = list(set(list(range(lon_size*lat_size))) - set(nan_idx))
@@ -84,17 +82,16 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
 
             # flatten the data
             data_reshaped[m][idx_r,:,:] = data[m][r].copy().reshape(time_period, lat_size*lon_size)
-            # replace continent's grid cell values with NaNs
-            # data_reshaped[m][idx_r,:,:] = data_reshaped[m][idx_r,:,:] - np.expand_dims(np.nanmean(data_reshaped[m][idx_r,:,:],axis=1),axis=1).repeat(lon_size*lat_size,axis=1) 
 
             # replace continent's grid cell values with NaNs
             data_reshaped[m][idx_r,:,nan_idx] = float('nan')
 
         # compute the mean  ########HERERER
-        means[m] = np.nanmean(data_reshaped[m],axis=(0,1))
-        means[m] = np.expand_dims(means[m],axis=(0,1))
-        means[m] = np.repeat(means[m], time_period, axis=1) 
-        means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
+        # means[m] = np.nanmean(data_reshaped[m],axis=0)
+        means[m] = np.zeros_like(data_reshaped[m])
+        # means[m] = np.expand_dims(means[m],axis=0)
+        # means[m] = np.repeat(means[m], time_period, axis=1) 
+        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
 
 
         # compute the variance
@@ -102,9 +99,8 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
         vars[m] = np.expand_dims(vars[m],axis=(0))
         vars[m] = np.repeat(vars[m], data_reshaped[m].shape[0], axis=0)
 
-
-        # # center the data
-        data_reshaped[m] = data_reshaped[m] 
+        # compute the anomalies
+        data_reshaped[m] = data_reshaped[m] - np.expand_dims(np.nanmean(data_reshaped[m],axis=1),axis=1).repeat(data_reshaped[m].shape[1],axis=1)
         
     return data_reshaped, means, vars
 
@@ -154,24 +150,9 @@ def compute_forced_response(data, lon_size, lat_size, nan_idx, time_period=34):
 
     for idx_m,m in enumerate(data.keys()):
         
-        data_forced_response[m] = np.zeros((len(data[m].keys()),time_period, lat_size*lon_size))
-        y_tmp = np.zeros((len(data[m].keys()),time_period, lat_size*lon_size))
+        data_forced_response[m] = np.expand_dims(np.nanmean(data[m],axis=0),axis=0).repeat(data[m].shape[0],axis=0)
+
     
-        for idx_r, r in enumerate(data[m].keys()):
-
-            # flatten the data
-            y_tmp[idx_r,:,:] = data[m][r].copy().reshape(time_period, lat_size*lon_size)
-
-            # replace continent's grid cell values with NaNs
-            y_tmp[idx_r,:,nan_idx] = float('nan')
-    
-        # compute mean reference
-        mean_spatial_ensemble = np.nanmean(y_tmp,axis=0)
-
-        # copmpute forced response (the same for each run)
-        for idx_r, r in enumerate(data[m].keys()):              
-            data_forced_response[m][idx_r,:,:] = mean_spatial_ensemble 
-
     return data_forced_response
 
 
@@ -227,50 +208,7 @@ def numpy_to_torch(x,y,means,vars, dtype=torch.float32):
     return x_tmp, y_tmp, means_tmp, vars_tmp
 
 
-
-def rescale_and_merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
-    """Concatenate training sets for all models except model m. This enables to create the big matrices X and Y.
-        The data are standardized as follow: 
-        training data are divided by the square root of the variance for each climate model.
-        test data are divided by the mean of the square root of the variance for all training climate model.
-
-       Args:
-
-       Return:
-    """
-    # merge runs for each model
-    x_merged, y_merged, means_merged, vars_merged = merge_runs(x,y,means,vars)
-
-    ################ We construct X, Y in R^{grid x runs*time steps}
-
-    # We construct X_test in R^{grid x runs*time steps} using scaler computed in the training set
-    x_test = x_merged[m_out]
-
-    # We construct Y_test in R^{grid x runs*time steps} using TRUE scaler
-    y_test = y_merged[m_out]
-
-    # Concatenate all models to build the matrix X
-    training_models = []
-    count_tmp = 0
-    
-    for idx_m,m in enumerate(x.keys()):
-        
-        if m != m_out:
-            training_models.append(m)
-            if count_tmp ==0:
-
-                x_train = (x_merged[m] - means_merged[m])/torch.sqrt(vars_merged[m])
-                y_train = (y_merged[m] -  means_merged[m])/torch.sqrt(vars_merged[m])
-                count_tmp +=1
-
-            else:
-                x_train = torch.cat([x_train, (x_merged[m] - means_merged[m])/torch.sqrt(vars_merged[m]) ],dim=0)
-                y_train = torch.cat([y_train, (y_merged[m] - means_merged[m])/torch.sqrt(vars_merged[m]) ],dim=0)
-
-    return training_models, x_train, y_train, x_test, y_test
-
-
-def merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
+def merge_models_and_runs(m_out,x,y,means,vars,dtype=torch.float32):
     """Concatenate training sets for all models except model m. This enables to create the big matrices X and Y.
         Unnormalized data.
        Args:
@@ -283,10 +221,10 @@ def merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
     ################ We construct X, Y in R^{grid x runs*time steps}
 
     # We construct X_test in R^{grid x runs*time steps} using scaler computed in the training set
-    x_test = x_merged[m_out]
+    x_test = None
 
     # We construct Y_test in R^{grid x runs*time steps} using TRUE scaler
-    y_test = y_merged[m_out]
+    y_test = None
 
     # Concatenate all models to build the matrix X
     training_models = []
@@ -298,18 +236,22 @@ def merge_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
             training_models.append(m)
             if count_tmp ==0:
 
-                x_train = x_merged[m]
-                y_train = y_merged[m]
+                x_train = x_merged[m]/np.sqrt(x_merged[m].shape[0])
+                y_train = y_merged[m]/np.sqrt(x_merged[m].shape[0])
                 count_tmp +=1
 
             else:
-                x_train = torch.cat([x_train, x_merged[m]],dim=0)
-                y_train = torch.cat([y_train, y_merged[m]],dim=0)
+                x_train = torch.cat([x_train, x_merged[m]/ np.sqrt(x_merged[m].shape[0])],dim=0)
+                y_train = torch.cat([y_train, y_merged[m]/ np.sqrt(x_merged[m].shape[0])],dim=0)
 
+        else:
+            # we do not add the model m_out to the training set
+            x_test = x_merged[m]
+            y_test = y_merged[m]
     return training_models, x_train, y_train, x_test, y_test
 
 
-def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
+def rescale_training_set(m_out,x,y,means,vars,dtype=torch.float32):
     """Stack all ensemble members except for model m. This enables to create the big matrices X and Y.
 
        Args:
@@ -329,8 +271,8 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
     for idx_m,m in enumerate(x.keys()):
 
         if m != m_out:
-            x_rescaled[m] = (x[m] - means[m] )/torch.sqrt(vars[m])
-            y_rescaled[m] = (y[m] - means[m] )/torch.sqrt(vars[m])
+            x_rescaled[m] = (x[m] - means[m] )/ (torch.sqrt(vars[m]))
+            y_rescaled[m] = (y[m] - means[m] )/ (torch.sqrt(vars[m]))
             training_models.append(m)
         
         else:
@@ -340,17 +282,29 @@ def rescale_training_and_test_sets(m_out,x,y,means,vars,dtype=torch.float32):
     return training_models, x_rescaled, y_rescaled
 
 
-def scale_and_merge(m_out,x,y,means,vars,dtype=torch.float32):
 
-    x_tmp = x.copy()
-    y_tmp = y.copy()
+# reshape the data such that X is (Time, Runs, lat*lon)
+def stack_models_and_runs(models,x,y, dtype=torch.float32):
+    """Stack all ensemble members of all models in a single tensor.
 
-    for idx_m,m in enumerate(list(x.keys())):
-        if m != m_out:
-            x_tmp[m] = x_tmp[m]/np.sqrt(x_tmp[m].shape[0])
-            y_tmp[m] = y_tmp[m]/np.sqrt(y_tmp[m].shape[0])
-    
-    
-    training_models, x_train, y_train, x_test, y_test =  merge_training_and_test_sets(m_out,x_tmp,y_tmp,means,vars,dtype=dtype)
+       Args:
 
-    return training_models, x_train, y_train, x_test, y_test
+       Return:
+    """
+
+    for idx_m,m in enumerate(models):
+        if idx_m == 0:
+            # x_stacked = x[m]/np.sqrt(x[m].shape[0])
+            # y_stacked = y[m]/np.sqrt(x[m].shape[0])
+
+            x_stacked = x[m]
+            y_stacked = y[m]
+        else:   
+
+            # x_stacked = torch.cat((x_stacked, x[m]/np.sqrt(x[m].shape[0])), dim=0)
+            # y_stacked = torch.cat((y_stacked, y[m]/np.sqrt(y[m].shape[0])), dim=0)
+
+            x_stacked = torch.cat((x_stacked, x[m]), dim=0)
+            y_stacked = torch.cat((y_stacked, y[m]), dim=0)
+
+    return x_stacked, y_stacked
