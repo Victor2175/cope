@@ -39,7 +39,7 @@ def data_processing(data,longitude,latitude,max_models = 15):
 
                 # Upscaling of raw data 
                 data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][:,:,:],(1,2,2))
-                data_processed[m][r] = data_processed[m][r][131:,:,:]
+                # data_processed[m][r] = data_processed[m][r][131:,:,:]
 
 
                 # capture nan indices and record the union of nans
