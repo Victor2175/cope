@@ -39,7 +39,7 @@ def data_processing(data,longitude,latitude,max_models = 15):
 
                 # Upscaling of raw data 
                 data_processed[m][r] = skimage.transform.downscale_local_mean(data_processed[m][r][:,:,:],(1,2,2))
-                # data_processed[m][r] = data_processed[m][r][131:,:,:]
+                data_processed[m][r] = data_processed[m][r][131:,:,:]
 
 
                 # capture nan indices and record the union of nans
@@ -86,13 +86,11 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
             # replace continent's grid cell values with NaNs
             data_reshaped[m][idx_r,:,nan_idx] = float('nan')
 
-        # compute the mean  ########HERERER
-        # means[m] = np.nanmean(data_reshaped[m],axis=0)
+        # compute the mean  ########
         means[m] = np.zeros_like(data_reshaped[m])
-        # means[m] = np.expand_dims(means[m],axis=0)
-        # means[m] = np.repeat(means[m], time_period, axis=1) 
-        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0) 
-
+        # means[m] = np.nanmean(data_reshaped[m],axis=(0))
+        # means[m] = np.expand_dims(means[m],axis=(0))
+        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0)
 
         # compute the variance
         vars[m] = np.nanvar(data_reshaped[m],axis=(0))
@@ -133,7 +131,7 @@ def compute_smooth_variance(data, smoothing=0.1):
 
 
 
-def compute_forced_response(data, lon_size, lat_size, nan_idx, time_period=34):
+def compute_forced_response(data):
     """ Compute forced response.
 
         Args:
@@ -148,7 +146,7 @@ def compute_forced_response(data, lon_size, lat_size, nan_idx, time_period=34):
     # compute the forced response
     data_forced_response = {}
 
-    for idx_m,m in enumerate(data.keys()):
+    for idx_m,m in enumerate(list(data.keys())):
         
         data_forced_response[m] = np.expand_dims(np.nanmean(data[m],axis=0),axis=0).repeat(data[m].shape[0],axis=0)
 
@@ -294,16 +292,9 @@ def stack_models_and_runs(models,x,y, dtype=torch.float32):
 
     for idx_m,m in enumerate(models):
         if idx_m == 0:
-            # x_stacked = x[m]/np.sqrt(x[m].shape[0])
-            # y_stacked = y[m]/np.sqrt(x[m].shape[0])
-
             x_stacked = x[m]
             y_stacked = y[m]
         else:   
-
-            # x_stacked = torch.cat((x_stacked, x[m]/np.sqrt(x[m].shape[0])), dim=0)
-            # y_stacked = torch.cat((y_stacked, y[m]/np.sqrt(y[m].shape[0])), dim=0)
-
             x_stacked = torch.cat((x_stacked, x[m]), dim=0)
             y_stacked = torch.cat((y_stacked, y[m]), dim=0)
 
