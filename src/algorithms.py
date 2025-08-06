@@ -1,555 +1,651 @@
-import torch     # type: ignore
 import numpy as np
-import time 
+import torch
+from typing import Dict, Tuple, List, Optional, Union
 
-######### TO DO: REWRITE THE ALGFORITHMs with variances #########
-
-# 1- Ridge regression problem : 
-# $\min_{W} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2$
-
-def ridge_regression(X, Y, lambda_=1.0,dtype=torch.float32,verbose=False):
+def ridge_regression(x: torch.Tensor, y: torch.Tensor, lambda_reg: float, 
+                    verbose: bool = False) -> torch.Tensor:
     """
-    Computes the closed-form solution for reduced rank regression.
+    Solve ridge regression using closed-form solution.
     
     Args:
-        X (torch.Tensor): Predictor matrix of shape (n, p).
-        Y (torch.Tensor): Response matrix of shape (n, q).
-        lambda_ (scalar): Ridge penalty coefficient.
+        x: Input features (n_samples, n_features) or (n_models, n_times, n_features)
+        y: Target values (n_samples, n_targets) or (n_models, n_times, n_targets)
+        lambda_reg: Regularization parameter
+        verbose: Whether to print progress
         
     Returns:
-        U (torch.Tensor): Low-rank predictor coefficients of shape (p, rank).
-        V (torch.Tensor): Low-rank response coefficients of shape (q, rank).
+        w: Ridge regression weights (n_features, n_targets)
     """
-    
-    # compute Penroe Morose pseudo inverse of X^T @ X
-    P = torch.linalg.inv(X.T @ X + lambda_ * torch.eye(X.shape[1],dtype=dtype))
-    
-    # compute ordinary least square solution 
-    W_ols = P @ X.T @ Y
-
-    # print loss function 
     if verbose:
-        loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
-        print("Loss function: ", loss.item())
+        print(f"Solving ridge regression with λ={lambda_reg}")
+        print(f"Input shape: X={x.shape}, Y={y.shape}")
     
-    return W_ols
-
-
-# 2- Low-rank ridge regression problem: 
-# $\min_{W \colon \mathrm{rank}(W) \leq r} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2$
-
-
-def ridge_regression_low_rank(X, Y, rank=5.0, lambda_=1.0,dtype=torch.float32,verbose=False):
-    """
-    Computes the closed-form solution for reduced rank regression.
+    # Reshape to 2D if needed (flatten first two dimensions)
+    if x.dim() == 3:
+        x = x.reshape(-1, x.shape[-1])  # (n_models*n_times, n_features)
+    if y.dim() == 3:
+        y = y.reshape(-1, y.shape[-1])  # (n_models*n_times, n_targets)
     
-    Args:
-        X (torch.Tensor): Predictor matrix of shape (n, p).
-        Y (torch.Tensor): Response matrix of shape (n, q).
-        rank (Int): Desired rank for the approximation.
-        lambda_ (Float64): Ridge penalty coefficient.
-        
-    Returns:
-        U (torch.Tensor): Low-rank predictor coefficients of shape (p, rank).
-        V (torch.Tensor): Low-rank response coefficients of shape (q, rank).
-    """
-
-    # compute Penroe Morose pseudo inverse of X^T @ X
-    P = torch.linalg.inv(X.T @ X + lambda_ * torch.eye(X.shape[1],dtype=dtype))
-    
-    # compute ordinary least square solution 
-    W_ols = P @ X.T @ Y
-    
-    # compute SVD decomposition of X @ W_ols
-    U, S, Vh = torch.linalg.svd(X @ W_ols, full_matrices=False)
-    
-    # Truncate to the desired rank
-    U_r = U[:, :rank]            # (p, rank)
-    S_r = torch.diag(S[:rank])   # (rank, rank)
-    V_r = Vh[:rank, :].T         # (q, rank)
-
-    # compute regressor
-    W_rrr = W_ols @ V_r @ V_r.T
-
-    # print loss function
     if verbose:
-        loss = torch.norm(Y - X @ W_rrr,p='fro')**2 + lambda_ * torch.norm(W_rrr,p='fro')**2
-        print("Loss function: ", loss.item())
-
-    return W_rrr
-
-
-# create a laplacian matric of the spatial grid latitude x longitude
-
-def create_laplacian_matrix(latitude, longitude):
-    """
-    Create a Laplacian matrix for the spatial grid.
-    Args:
-        latitude: numpy array of shape (n_latitude,)
-        longitude: numpy array of shape (n_longitude,)
-    Returns:
-        Laplacian matrix of shape (n_latitude * n_longitude, n_latitude * n_longitude)
-    """
-    n_lat = latitude.shape[0]
-    n_lon = longitude.shape[0]
+        print(f"Reshaped: X={x.shape}, Y={y.shape}")
     
-    # Create the Laplacian matrix
-    laplacian = np.zeros((n_lat * n_lon, n_lat * n_lon), dtype=np.float32)
+    # Solve (X^T X + λI)^{-1} X^T Y
+    XtX = x.T @ x
+    XtY = x.T @ y
+    I = torch.eye(XtX.shape[0], dtype=XtX.dtype, device=XtX.device)
     
-    for i in range(n_lat):
-        for j in range(n_lon):
-            idx = i * n_lon + j
-            laplacian[idx, idx] = -4  # center point
-            
-            if i > 0:  # north
-                laplacian[idx, idx - n_lon] = 1
-            if i < n_lat - 1:  # south
-                laplacian[idx, idx + n_lon] = 1
-            if j > 0:  # west
-                laplacian[idx, idx - 1] = 1
-            if j < n_lon - 1:  # east
-                laplacian[idx, idx + 1] = 1
+    w = torch.linalg.solve(XtX + lambda_reg * I, XtY)
     
-    return torch.from_numpy(laplacian).to(torch.float32)
-
-
-def laplacian_ridge_regression(X, Y, latitude, longitude, lambda_=1.0, nu_=1.0,dtype=torch.float32,verbose=False):
-    """
-    Computes the closed-form solution for reduced rank regression.
-    
-    Args:
-        X (torch.Tensor): Predictor matrix of shape (n, p).
-        Y (torch.Tensor): Response matrix of shape (n, q).
-        lambda_ (scalar): Ridge penalty coefficient.
-        
-    Returns:
-        U (torch.Tensor): Low-rank predictor coefficients of shape (p, rank).
-        V (torch.Tensor): Low-rank response coefficients of shape (q, rank).
-    """
-    
-    L = create_laplacian_matrix(latitude, longitude)
-
-    # compute Penroe Morose pseudo inverse of X^T @ X
-    P = torch.linalg.inv(X.T @ X @ (nu_* L + torch.eye(X.shape[1],dtype=dtype) ) + lambda_ * torch.eye(X.shape[1],dtype=dtype))
-    
-    # compute ordinary least square solution 
-    W_ols = P @ X.T @ Y
-
-    # print loss function 
     if verbose:
-        loss = torch.norm(Y - X @ W_ols,p='fro')**2 + lambda_ * torch.norm(W_ols,p='fro')**2
-        print("Loss function: ", loss.item())
+        print(f"Ridge weights computed: {w.shape}")
     
-    return W_ols
-
-# Function that returns the low-rank projection of a given matrix M using the Eckart–Young–Mirsky theorem.
-# Proj_(rank <= r)(M) = U_r S_r V_r^T
-# where U_r, S_r, V_r are the truncated SVD decomposition of M.  
-def low_rank_projection(M,rank=5,dtype=torch.float32):
-    """Compute low-rank projection of a given matrix M. Thanks to Eckart–Young–Mirsky theorem, we can derive a closed-form solution.
-
-        Args:
-            - M: torch.tensor (n x m)
-            - rank: integer
-
-        Returns:
-            - M_low_rank: low-rank approaximation of matrix M.
-    """
-
-    # compute SVD decomposition of W
-    U, S, Vh = torch.linalg.svd(M, full_matrices=False)
-    
-    # Truncate to the desired rank
-    U_r = U[:, :rank]            # (p, rank)
-    S_r = torch.diag(S[:rank])   # (rank, rank)
-    V_r = Vh[:rank, :].T         # (q, rank)
-
-    # compute regressor
-    M_low_rank = U_r @ S_r @ V_r.T 
-
-    # assert that the rank is correct
-    assert torch.linalg.matrix_rank(M_low_rank) == rank
-
-    # return low-rank projection
-    return M_low_rank
-
-######## Functions used to solve the robust weight regression problem using accelerated gradient descent with low-rank projection #########
-# 3 - $\max_{\alpha \in \Delta} \min_{W} \sum_{m} \alpha_m \Vert \Sigma^{-1/2}(Y_m - X_m W) \Vert_F^2 + \lambda \Vert W \Vert_F^2$
-
-# compute gradient
-def compute_gradient(models,x,y,w,notnan_idx,lambda_=1.0,mu_=1.0,dtype=torch.float32):
-    """This function computes the gradient of ridge log-sum-exp loss with respect to W: 
-    $\sum_{m,r} -(2/R^m) X_{m,r}.T (Y_{m,r} - X_{m,r} W) softmax(norm(Y_{m,r} - X_{m,r} W)) +  2\lambda * W$
-
-    Args:
-        - models: list of strings
-        - x,y: dictionaries of input-output pairs per model and per run, and variances.
-        - w: torch.tensor (grid_size, grid_size)
-        - notnan_idx: list of integers
-        - lambda_: torch.dtype, ridge penalty coefficient
-        - mu_: torch.dtype, entropy penalty coefficient
-        
-    Returns:
-        - Gradient matrix: torch.tensor grid_size x grid_size
-    """
-    res = torch.zeros(len(models), w.shape[0], w.shape[0], dtype=dtype)
-    res_sumexp = torch.zeros(len(models), dtype=dtype)
-    
-    # get computation time
-    for idx_m, m in enumerate(models):
-
-        # compute -2X_{m,r}^T (Y_{m,r}^T - X_{m,r}^T W)
-        res[idx_m][np.ix_(notnan_idx,notnan_idx)] = - 2*torch.sum(torch.bmm(torch.transpose(x[m][:,:,notnan_idx], 1,2) , \
-                                                        y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]),dim=0, dtype=dtype)
-
-        # compute the exponential term
-        res_sumexp[idx_m] = (1/mu_)*torch.sum(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2)
-        
-    res_sumexp = torch.nn.functional.softmax(res_sumexp,dim=0, dtype=dtype)
-    
-    # compute gradient as sum (res * softmax)
-    grad = torch.sum(torch.unsqueeze(torch.unsqueeze(res_sumexp,-1),-1) * res, dim=0, dtype=dtype)    
-    grad[np.ix_(notnan_idx,notnan_idx)] = grad[np.ix_(notnan_idx,notnan_idx)] + 2*lambda_* w[np.ix_(notnan_idx,notnan_idx)]
-
-
-    return grad 
-
-
-def train_robust_weights(models,x,y,lon_size,lat_size,notnan_idx,\
-                               rank=5.0,lambda_=1.0,mu_=1.0,\
-                               lr=1e-5,nb_iterations=20,dtype=torch.float32,verbose=False):
-    """This function runs accelerated gradient descent. If rank is not None, then it runs a low rank projection step at each iteration.
-
-       Args:
-        - models: list of strings, climate models taken into account
-        - x,y: dictionaries of input-output pairs and variances per model 
-        - lon_size, lat_size: integers, longitude-latitude grid size
-        - notnan_idx: list of integers
-        - rank: integer, low rank constraint
-        - lambda_: torch.dtype, ridge penalty coefficient
-        - mu_: torch.dtype, entropy penalty coefficient
-        - lr: torch.dtype, learning rate
-        - nb_iterations: integer, number of gradient steps
-            
-       Returns:
-        - w: torch.tensor, regressor matrix 
-    """
-    # initialize regressor matrix
-    w = torch.zeros(lon_size*lat_size,lon_size*lat_size, dtype=dtype)
-    w_old = torch.zeros(lon_size*lat_size,lon_size*lat_size, dtype=dtype)
-
-    loss = torch.zeros(nb_iterations, dtype=dtype)
-    
-    # run a simple loop
-    for it in range(nb_iterations):
-
-        # accelerate gradient descent
-        if it > 1:
-            w_tmp = w + ((it-1)/(it+2)) * (w - w_old)
-        else:
-            w_tmp = w.detach()
-        
-        # save old parameter
-        w_old = w.clone().detach()
-
-        # compute gradient
-        grad = compute_gradient(models,x,y,w_tmp,notnan_idx,lambda_,mu_,dtype=dtype)
-
-        # update the variable w
-        w = w_tmp - lr * grad
-
-        # low-rank projection
-        if rank is not None:
-            w = low_rank_projection(w,rank=rank,dtype=dtype)
-
-        if verbose==True:
-            
-            # compute loss functon to check convergence 
-            res = torch.zeros(len(models))
-
-            for idx_m, m in enumerate(models):
-
-                # compute residuals
-                res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2)
-
-            # obj = mu_*torch.logsumexp((1/mu_)* (res/nonzero_count),0)
-            obj = mu_*torch.logsumexp((1/mu_)* res,0)
-            obj += lambda_*torch.norm(w,p='fro')**2
-
-            loss[it] = obj.item()
-
-            print("Iteration ", it,  ": Loss function : ", obj.item())
-            
-    return w, loss
-
-
-# function to compute weights
-def compute_weights(models,w,x,y,notnan_idx,mu_=1.0,dtype=torch.float32):
-    """Compute weights of models given regressor matrix W.
-        
-        Args:
-            - models: list of strings
-            - w: torch.tensor (grid_size, grid_size)
-            - x,y: dictionaries of input-output pairs per model
-            - notnan_idx: list of integers
-            - lambda_: torch.dtype, ridge penalty coefficient
-            - mu_: torch.dtype, entropy penalty coefficient
-            
-
-        Returns:
-            - weights: dictionary of weights
-    """
-   
-    M = len(list(models))
-    alpha = torch.zeros(M,dtype=dtype)
-    res = torch.zeros(M,dtype=dtype)
-    
-    for idx_m,m in enumerate(models):
-        
-        res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2,dtype=dtype)
-        alpha[idx_m] = (1/mu_)*res[idx_m]
-
-    # softmax function to compute weights $\alpha$
-    alpha = torch.nn.functional.softmax(alpha, dim=0, dtype=dtype)
-    weights = {m: alpha[idx_m].item() for idx_m,m in enumerate(models)}
-
-    return weights
-
-
-############## Functions to optimize ridge penalty and trace norm penalty ##############
-# 4 - $\min_{W} \Vert Y - X W \Vert_F^2 + \lambda \Vert W \Vert_F^2 + \nu \Vert W \Vert_{*}$
-# optimal solution: $W = S_{nu/lambda}((X^T X + \lambda I)^{-1} X^T Y)$
-
-def singular_value_thresholding(M, nu_):
-    """Singular Value Thresholding (SVT) operator: M -> U * S_nu * V^T"""
-    U, S, V = torch.linalg.svd(M, full_matrices=True)
-    S_nu = torch.sign(S)*torch.max(torch.abs(S) - nu_,torch.tensor(0.0))  # Soft-thresholding on singular values
-    return U @ torch.diag(S_nu) @ V.t()
-
-def proximal_algorithm_ridge_trace_penalty(X,Y,lambda_,nu_,lr=0.1,nb_iterations=10,dtype=torch.float32,verbose=False):
-    """This function runs the proximal gradient algorithm to solve the optimization problem min f(W) + g(W) 
-      where f(W) = 1/2 ||Y - XW||_F^2 and g(W) = lambda * ||W||_F^2 + nu * ||W||_*
-
-    Args:
-        - X, Y: input-output pair
-        - lambda_: ridge penalty coefficient
-        - nu_: trace norm penalty coefficient
-        - lr: learning rate
-        - nb_iterations: number of iterations
-
-    Returns:
-        - w: optimal regressor matrix
-        - training_loss: training loss
-    """
-    w = torch.zeros(X.shape[1],Y.shape[1], dtype=dtype)
-    loss = torch.zeros(nb_iterations, dtype=dtype)
-
-    for it in range(nb_iterations):
-
-        # compute gradient
-        grad = X.T @ (X @ w - Y) + lambda_ * w
-
-        # update the variable w
-        w = w - lr * grad
-
-        # compute proximal operator of trace norm and frobenius norm
-        w = singular_value_thresholding(w, lr*nu_)
-
-        lr = lr/2
-
-        if verbose==True:
-            # compute training loss
-            obj = 0.5 * torch.norm(Y - X @ w,p='fro')**2 + lambda_ * torch.norm(w,p='fro')**2 + nu_ * torch.norm(w,p='nuc')
-            loss[it] = obj.item()
-            print("Iteration ", it,  ": Loss function : ", obj.item())
-
-    return w, loss
-
-def train_trace_norm_ridge(X,Y,lambda_=1.0,nu_=1.0,dtype=torch.float32,verbose=False):
-
-    """This function runs the proximal gradient algorithm to solve the optimization problem min f(W) + g(W) 
-      where f(W) = 1/2 ||Y - XW||_F^2 and g(W) = lambda * ||W||_F^2 + nu * ||W||_*
-
-    Args:
-        - X, Y: input-output pair
-        - lambda_: ridge penalty coefficient
-        - nu_: trace norm penalty coefficient
-
-    Returns:
-        - w: optimal regressor matrix
-    """
-    w = torch.zeros(X.shape[1],Y.shape[1], dtype=dtype)
-
-    # compute closed-form solution
-    P = torch.linalg.inv(X.T @ X + lambda_ * torch.eye(X.shape[1],dtype=dtype))
-    w = singular_value_thresholding(P @ X.T @ Y, nu_/lambda_)
-
-    if verbose==True:
-        # compute training loss
-        obj = 0.5 * torch.norm(Y - X @ w,p='fro')**2 + lambda_ * torch.norm(w,p='fro')**2 + nu_ * torch.norm(w,p='nuc')
-        print("Loss function : ", obj.item())
-
     return w
 
-
-######### Functions to optimize robust weight model with ridge penalty and trace norm penalty  #########
-# 5 - $\min_{W} \max_{\alpha \in \Delta} \sum_{m} \alpha_m \Vert \Sigma^{-1/2}(Y_m - X_m W) \Vert_F^2 + \lambda \Vert W \Vert_F^2 + \nu \Vert W \Vert_{*}$ 
-# we use proximal gradient descent to solve this problem
-
-def frobenius_prox(x,lambda_):
-    """Proximal operator for the Frobenius norm"""
-    return x / (1 + lambda_)
-
-def soft_thresholding(x,lambda_):
-    """Soft-thresholding operator"""
-    return torch.sign(x) * torch.max(torch.abs(x) - lambda_, torch.tensor(0.0))
-
-def frobenius_and_trace_norm_prox(x,lambda_, nu_):
-    """Proximal operator for the nuclear norm"""
-    U, S, V = torch.linalg.svd(x, full_matrices=False)
-    S = soft_thresholding(S,nu_)
-    # S = frobenius_prox(S,lambda_)
-    return U @ torch.diag(S) @ V.t()
-
-def compute_gradient_logsumexp(models,x,y,w,notnan_idx,lambda_ =1.0, mu_=1.0,dtype=torch.float32):
-    """This function computes the gradient of ridge log-sum-exp loss with respect to W + ridge regularization + trace norm rgularizer.
-
-    Args:
-        - x, y: input-output pair
-        - w: regressor matrix
-        - B: positive definite matrix used in the variation 
-        
-    Returns:
-        - Gradient matrix: torch.tensor d x d
+class LowRankSolver:
     """
-    res = torch.zeros(len(models), w.shape[0], w.shape[0]).to(dtype)
-    res_sumexp = torch.zeros(len(models)).to(dtype)
-
-    for idx_m, m in enumerate(models):
-
-        # compute -2X_{m,r}^T (Y_{m,r}^T - X_{m,r}^T W)
-        res[idx_m][np.ix_(notnan_idx,notnan_idx)] = - 2*torch.mean(torch.bmm(torch.transpose(x[m][:,:,notnan_idx], 1,2) , \
-                                                        y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)]),dim=0)
-
-        # compute the exponential term
-        res_sumexp[idx_m] = (1/mu_)*torch.mean(torch.norm(y[m][:,:,notnan_idx] - x[m][:,:,notnan_idx] @ w[np.ix_(notnan_idx,notnan_idx)],p='fro',dim=(1,2))**2)
-
-    # compute the log-sum-exp term            
-    softmax = torch.nn.Softmax(dim=0)
-    res_sumexp = softmax(res_sumexp)
-
-    # compute gradient as sum (res * softmax)
-    grad = torch.sum(torch.unsqueeze(torch.unsqueeze(res_sumexp,-1),-1) * res, dim=0) 
-    grad[np.ix_(notnan_idx,notnan_idx)] +=  2* lambda_ * w[np.ix_(notnan_idx,notnan_idx)] 
+    Efficient low-rank approximation solver using precomputed SVD.
+    Computes SVD once and provides solutions for any rank.
+    """
     
-    return grad 
-
-def train_robust_weights_trace_norm(models,x,y,lon_size,lat_size,notnan_idx,lambda_=1.0,mu_=1.0,nu_=1.0,lr=0.1,nb_iterations=10, dtype=torch.float32, verbose=False):
-    """This function runs the (accelerated) proximal gradient algorithm to solve the optimization problem min f(W) + g(W) 
-      where f(W) = mu * log (sum_m exp (1/mu * ||Y^m - X^m W||_F^2))  and g(W) = lambda * ||W||_F^2 + nu * ||W||_*
-
-    Args:
-        - models: list of models
-        - x, y: input-output pair
-        - notnan_idx: indices of the non missing values
-        - lambda_: ridge penalty coefficient
-        - nu_: trace norm penalty coefficient
-        - mu_: temperature parameter
-        - lr: learning rate
-        - nb_prox_iterations: number of iterations
-
-    Returns:
-        - w: optimal regressor matrix
-        - training_loss: training loss
-    """
-    w = torch.zeros(lon_size*lat_size,lon_size*lat_size).to(dtype)
-    loss = torch.zeros(nb_iterations).to(dtype)
-
-    for it in range(nb_iterations):
-
-
-        # accelerate gradient descent
-        if it > 1:
-            w_tmp = w + ((it-1)/(it+2)) * (w - w_old)
-        else:
-            w_tmp = w.detach()
-
-        # save old parameter
-        w_old = w.clone().detach()
-
-        # compute gradient
-        grad = compute_gradient_logsumexp(models,x,y,w_tmp,notnan_idx,lambda_,mu_)
-
-        # update the variable w
-        w = w_tmp - lr * grad
-
-        # compute proximal operator of trace norm and frobenius norm
-        w = frobenius_and_trace_norm_prox(w, lr*lambda_, lr*nu_)
+    def __init__(self):
+        self.U = None
+        self.S = None
+        self.Vt = None
+        self.XtY = None
+        self.is_fitted = False
         
+    def fit(self, x: torch.Tensor, y: torch.Tensor, w_full: torch.Tensor, 
+            verbose: bool = False) -> None:
+        """
+        Compute and store SVD components for efficient rank-k solutions.
         
-        if verbose==True:
-            # compute training loss
-            res = torch.zeros(len(models))
-            for idx_m, m in enumerate(models):
-                
-                res[idx_m] = torch.mean(torch.norm(y[m][:,:,notnan_idx] -x[m][:,:,notnan_idx] @ w[notnan_idx,:][:,notnan_idx], p='fro',dim=(1,2))**2,dtype=dtype)
+        Args:
+            x: Input features 
+            y: Target values
+            w_full: Full ridge regression solution
+            verbose: Whether to print progress
+        """
+        if verbose:
+            print("Computing SVD for low-rank approximations...")
             
-            obj = mu_*torch.logsumexp((1/mu_)* res,0)
-            obj += lambda_*torch.norm(w,p='fro')**2
-            obj += nu_*torch.norm(w,p='nuc')
-
-            loss[it] = obj.item()
-
-            print("Iteration ", it,  ": Loss function : ", obj.item())
-            print("Rank of w: ", torch.linalg.matrix_rank(w))
-
-    return w, loss
-
-############# prediction tools #########
-def prediction(x, W, notnan_idx,nan_idx,dtype=torch.float32):
-    """
-    Compute target prediction given time series x and regressor W.
-
-    Args:
-        - x: torch.tensor (runs, time series length, grid size) 
-        - W: torch.tensor (grid size non-nan idx, grid size non-nan idx)
-        - notnan_idx, nan_idx: torch.tensor integers
-
-    Returns:
-        - y_pred: torch.tensor (runs, time series length, grid size)
-    """    
-    y_pred = torch.zeros_like(x)
-    y_pred[:,:,notnan_idx] = x[:,:,notnan_idx] @  W[np.ix_(notnan_idx, notnan_idx)]
-    y_pred[:,:,nan_idx] = float('nan')
+        # Ensure inputs are 2D
+        if x.dim() == 3:
+            x = x.reshape(-1, x.shape[-1])
+        if y.dim() == 3:
+            y = y.reshape(-1, y.shape[-1])
+            
+        # Compute SVD of the full solution
+        self.U, self.S, self.Vt = torch.linalg.svd(w_full, full_matrices=False)
+        self.XtY = x.T @ y
+        
+        if verbose:
+            print(f"SVD computed: U={self.U.shape}, S={self.S.shape}, Vt={self.Vt.shape}")
+            print(f"Singular values range: {self.S.min():.6f} to {self.S.max():.6f}")
+            
+        self.is_fitted = True
+        
+    def get_rank_k_solution(self, rank: int, verbose: bool = False) -> torch.Tensor:
+        """
+        Get rank-k approximation using precomputed SVD.
+        
+        Args:
+            rank: Desired rank
+            verbose: Whether to print progress
+            
+        Returns:
+            w_k: Rank-k approximated weights
+        """
+        if not self.is_fitted:
+            raise ValueError("Must call fit() before getting solutions")
+            
+        if rank > min(self.U.shape[1], self.Vt.shape[0]):
+            rank = min(self.U.shape[1], self.Vt.shape[0])
+            if verbose:
+                print(f"Rank reduced to maximum possible: {rank}")
+                
+        if verbose:
+            print(f"Computing rank-{rank} approximation...")
+            
+        # Reconstruct with only top-k singular values
+        w_k = self.U[:, :rank] @ torch.diag(self.S[:rank]) @ self.Vt[:rank, :]
+        
+        if verbose:
+            print(f"Rank-{rank} solution computed: {w_k.shape}")
+            
+        return w_k
     
-    return y_pred
+    def get_multiple_ranks(self, ranks: List[int], 
+                          verbose: bool = False) -> Dict[int, torch.Tensor]:
+        """
+        Get solutions for multiple ranks efficiently.
+        
+        Args:
+            ranks: List of desired ranks
+            verbose: Whether to print progress
+            
+        Returns:
+            Dictionary mapping rank to solution
+        """
+        if not self.is_fitted:
+            raise ValueError("Must call fit() before getting solutions")
+            
+        solutions = {}
+        max_rank = min(self.U.shape[1], self.Vt.shape[0])
+        
+        for rank in ranks:
+            if rank > max_rank:
+                if verbose:
+                    print(f"Warning: Rank {rank} > max possible {max_rank}, skipping")
+                continue
+                
+            solutions[rank] = self.get_rank_k_solution(rank, verbose=False)
+            
+        if verbose:
+            print(f"Computed solutions for ranks: {list(solutions.keys())}")
+            
+        return solutions
+    
+    def explained_variance_ratio(self) -> torch.Tensor:
+        """Get explained variance ratio for each component."""
+        if not self.is_fitted:
+            raise ValueError("Must call fit() before getting variance ratios")
+            
+        return self.S**2 / torch.sum(self.S**2)
+    
+    def cumulative_variance_ratio(self) -> torch.Tensor:
+        """Get cumulative explained variance ratio."""
+        return torch.cumsum(self.explained_variance_ratio(), dim=0)
 
-
-def prediction_training_set(models, x, y, W, notnan_idx,dtype=torch.float32):
+def low_rank_approximation(x: torch.Tensor, y: torch.Tensor, w: torch.Tensor, 
+                          rank: int, verbose: bool = False) -> torch.Tensor:
     """
-    Compute prediction on a set of climate models given time series x and regressor W.
+    Legacy function for backward compatibility.
+    Creates a LowRankSolver and returns single rank solution.
+    """
+    solver = LowRankSolver()
+    solver.fit(x, y, w, verbose=verbose)
+    return solver.get_rank_k_solution(rank, verbose=verbose)
 
+class WeightedRidgeRegression:
+    """Ridge regression with model weighting and efficient low-rank solutions."""
+    
+    def __init__(self):
+        self.models = {}
+        self.low_rank_solvers = {}
+        self.performance = {}
+        
+    def train_per_model(self, x_dict: Dict[str, torch.Tensor], 
+                       y_dict: Dict[str, torch.Tensor],
+                       lambda_reg: float, rank: int = 10, 
+                       verbose: bool = False) -> Dict[str, Dict]:
+        """
+        Train ridge regression for each model with low-rank preparation.
+        
+        Args:
+            x_dict: Dictionary of input features per model
+            y_dict: Dictionary of targets per model
+            lambda_reg: Regularization parameter
+            rank: Primary rank for low-rank approximation
+            verbose: Whether to print progress
+            
+        Returns:
+            Dictionary of performance metrics per model
+        """
+        performance = {}
+        
+        for model_name in x_dict.keys():
+            if verbose:
+                print(f"\nTraining model: {model_name}")
+                
+            x_model = x_dict[model_name]
+            y_model = y_dict[model_name]
+            
+            # Ensure 2D tensors for individual model training
+            if x_model.dim() == 3:
+                x_model = x_model.reshape(-1, x_model.shape[-1])
+            if y_model.dim() == 3:
+                y_model = y_model.reshape(-1, y_model.shape[-1])
+            
+            # Train full ridge regression
+            w_full = ridge_regression(x_model, y_model, lambda_reg, verbose=verbose)
+            
+            # Setup low-rank solver
+            lr_solver = LowRankSolver()
+            lr_solver.fit(x_model, y_model, w_full, verbose=verbose)
+            
+            # Get primary rank solution
+            w_lr = lr_solver.get_rank_k_solution(rank, verbose=verbose)
+            
+            # Store models and solvers
+            self.models[model_name] = {
+                'full': w_full,
+                'low_rank': w_lr,
+                'rank': rank
+            }
+            self.low_rank_solvers[model_name] = lr_solver
+            
+            # Compute training performance
+            y_pred_full = x_model @ w_full
+            y_pred_lr = x_model @ w_lr
+            
+            mse_full = torch.mean((y_model - y_pred_full)**2).item()
+            mse_lr = torch.mean((y_model - y_pred_lr)**2).item()
+            
+            performance[model_name] = {
+                'mse_full': mse_full,
+                'mse_low_rank': mse_lr,
+                'rank': rank,
+                'explained_variance': lr_solver.cumulative_variance_ratio()[rank-1].item()
+            }
+            
+            if verbose:
+                print(f"  Full MSE: {mse_full:.6f}")
+                print(f"  Rank-{rank} MSE: {mse_lr:.6f}")
+                print(f"  Explained variance: {performance[model_name]['explained_variance']:.4f}")
+        
+        self.performance = performance
+        return performance
+    
+    def get_rank_solutions(self, ranks: List[int], 
+                          verbose: bool = False) -> Dict[str, Dict[int, torch.Tensor]]:
+        """
+        Get solutions for multiple ranks for all models efficiently.
+        
+        Args:
+            ranks: List of ranks to compute
+            verbose: Whether to print progress
+            
+        Returns:
+            Nested dictionary: model_name -> rank -> solution
+        """
+        all_solutions = {}
+        
+        for model_name, solver in self.low_rank_solvers.items():
+            if verbose:
+                print(f"Computing multiple ranks for {model_name}...")
+                
+            model_solutions = solver.get_multiple_ranks(ranks, verbose=verbose)
+            all_solutions[model_name] = model_solutions
+            
+        return all_solutions
+    
+    def compute_weights(self, x_dict: Dict[str, torch.Tensor], 
+                       y_dict: Dict[str, torch.Tensor],
+                       use_low_rank: bool = False, rank: Optional[int] = None) -> torch.Tensor:
+        """
+        Compute model weights based on performance, with flexible rank selection.
+        
+        Args:
+            x_dict: Dictionary of input features per model
+            y_dict: Dictionary of targets per model  
+            use_low_rank: Whether to use low-rank solutions
+            rank: Specific rank to use (if different from training rank)
+            
+        Returns:
+            Model weights tensor
+        """
+        model_names = list(self.models.keys())
+        weights = torch.zeros(len(model_names))
+        
+        for i, model_name in enumerate(model_names):
+            x_val = x_dict[model_name]
+            y_val = y_dict[model_name]
+            
+            # Ensure 2D tensors
+            if x_val.dim() == 3:
+                x_val = x_val.reshape(-1, x_val.shape[-1])
+            if y_val.dim() == 3:
+                y_val = y_val.reshape(-1, y_val.shape[-1])
+            
+            if use_low_rank:
+                if rank is not None and rank != self.models[model_name]['rank']:
+                    # Get solution for specific rank
+                    w_model = self.low_rank_solvers[model_name].get_rank_k_solution(rank)
+                else:
+                    # Use pre-computed low-rank solution
+                    w_model = self.models[model_name]['low_rank']
+            else:
+                w_model = self.models[model_name]['full']
+                
+            # Compute validation error
+            y_pred = x_val @ w_model
+            mse = torch.mean((y_val - y_pred)**2)
+            
+            # Weight inversely proportional to error
+            weights[i] = 1.0 / (mse + 1e-8)
+            
+        # Normalize weights
+        weights = weights / torch.sum(weights)
+        return weights
+    
+    def predict_weighted(self, x_test: torch.Tensor, weights: torch.Tensor, 
+                        use_low_rank: bool = False, rank: Optional[int] = None) -> torch.Tensor:
+        """
+        Make weighted predictions with flexible rank selection.
+        
+        Args:
+            x_test: Test input features
+            weights: Model weights
+            use_low_rank: Whether to use low-rank solutions
+            rank: Specific rank to use
+            
+        Returns:
+            Weighted predictions
+        """
+        model_names = list(self.models.keys())
+        
+        # Get the shape for output from the first model
+        first_model = model_names[0]
+        if use_low_rank:
+            if rank is not None and rank != self.models[first_model]['rank']:
+                w_sample = self.low_rank_solvers[first_model].get_rank_k_solution(rank)
+            else:
+                w_sample = self.models[first_model]['low_rank']
+        else:
+            w_sample = self.models[first_model]['full']
+
+            
+        
+        
+        for i, model_name in enumerate(model_names):
+            if use_low_rank:
+                if rank is not None and rank != self.models[model_name]['rank']:
+                    w_model = self.low_rank_solvers[model_name].get_rank_k_solution(rank)
+                else:
+                    w_model = self.models[model_name]['low_rank']
+            else:
+                w_model = self.models[model_name]['full']
+                
+            y_pred_model = x_test @ w_model
+
+            if i == 0:
+                y_pred_weighted = weights[i] * y_pred_model
+            else:
+                y_pred_weighted += weights[i] * y_pred_model
+            
+        return y_pred_weighted
+    
+
+    def optimize_lambda_cv(self, x_train_dict, y_train_dict, lambda_values=None, 
+                          cv_folds=5, objective='worst_case', verbose=True):
+        """
+        Optimize lambda using cross-validation on the training data.
+        
+        Args:
+            x_train_dict: Dictionary of training inputs per model
+            y_train_dict: Dictionary of training targets per model
+            lambda_values: List of lambda values to test
+            cv_folds: Number of cross-validation folds
+            objective: Optimization objective ('worst_case', 'mean', 'variance')
+            verbose: Whether to print progress
+            
+        Returns:
+            Dictionary with optimization results
+        """
+        if verbose:
+            print("Optimizing lambda using cross-validation for weighted ridge regression...")
+        
+        # Merge all training data for CV
+        from preprocessing import merge_training_data
+        x_merged, y_merged = merge_training_data(x_train_dict, y_train_dict)
+        
+        # Perform cross-validation
+        cv_results = cross_validation_lambda_optimization(
+            x_merged, y_merged, 
+            lambda_values=lambda_values,
+            cv_folds=cv_folds,
+            objective=objective,
+            verbose=verbose
+        )
+        
+        # Store results
+        self.cv_optimization_results = cv_results
+        self.optimal_lambda = cv_results['best_lambda']
+        
+        if verbose:
+            print(f"Optimal lambda for weighted ridge regression: {self.optimal_lambda}")
+            
+        return cv_results
+    
+    def train_with_optimal_lambda(self, x_train_dict, y_train_dict, rank=None, 
+                                 cv_folds=5, objective='worst_case', verbose=True):
+        """
+        Train weighted ridge regression with cross-validation optimized lambda.
+        
+        Args:
+            x_train_dict: Dictionary of training inputs per model
+            y_train_dict: Dictionary of training targets per model
+            rank: Low-rank approximation rank (optional)
+            cv_folds: Number of cross-validation folds
+            objective: Optimization objective for lambda selection
+            verbose: Whether to print progress
+            
+        Returns:
+            Dictionary with training performance
+        """
+        # First optimize lambda
+        cv_results = self.optimize_lambda_cv(
+            x_train_dict, y_train_dict, 
+            cv_folds=cv_folds, 
+            objective=objective, 
+            verbose=verbose
+        )
+        
+        optimal_lambda = cv_results['best_lambda']
+        
+        # Train with optimal lambda
+        if verbose:
+            print(f"\nTraining with optimal lambda = {optimal_lambda}")
+        
+        performance = self.train_per_model(
+            x_train_dict, y_train_dict, 
+            lambda_reg=optimal_lambda, 
+            rank=rank, 
+            verbose=verbose
+        )
+        
+        return {
+            'cv_results': cv_results,
+            'training_performance': performance,
+            'optimal_lambda': optimal_lambda
+        }
+
+def compute_trend(data: np.ndarray, years: slice = slice(30, None)) -> np.ndarray:
+    """
+    Compute linear trends over specified years.
+    
     Args:
-        - x: dictionary of torch.tensor (runs, time series length, grid size)
-        - y: dictionary of torch.tensor (runs, time series length, grid size)
-        - W: torch.tensor (grid size non-nan idx, grid size non-nan idx)
-        - notnan_idx, nan_idx: torch.tensor integers
-
+        data: Time series data (time, ...)
+        years: Slice object specifying which years to use
+        
     Returns:
-        - loss: dict of torch.tensor (runs, time series length, grid size)
-    """    
-    y_pred = {}
-    loss = {}
+        Linear trend coefficients
+    """
+    data_subset = data[years]
+    n_years = data_subset.shape[0]
+    
+    # Create time vector
+    time = np.arange(n_years)
+    
+    # Reshape for matrix operations
+    original_shape = data_subset.shape
+    data_flat = data_subset.reshape(n_years, -1)
+    
+    # Compute trends using least squares
+    X = np.column_stack([np.ones(n_years), time])
+    coeffs = np.linalg.lstsq(X, data_flat, rcond=None)[0]
+    trends = coeffs[1].reshape(original_shape[1:])  # Get slope coefficients
+    
+    return trends
 
-    # compute prediction on each model and compute training loss
-    for idx_m, m in enumerate(models):
 
-        # compute prediction 
-        y_pred[m] = torch.zeros_like(x[m])
-        y_pred[m][:,:,notnan_idx] = x[m][:,:,notnan_idx] @  W[np.ix_(notnan_idx, notnan_idx)]
+def cross_validation_lambda_optimization(x_train, y_train, lambda_values=None, 
+                                       cv_folds=5, objective='worst_case', 
+                                       verbose=True, random_state=42):
+    """
+    Perform cross-validation to optimize lambda with respect to worst-case objective.
+    
+    Args:
+        x_train: Training input data (n_samples, n_features)
+        y_train: Training target data (n_samples, n_targets)
+        lambda_values: List of lambda values to test
+        cv_folds: Number of cross-validation folds
+        objective: Optimization objective ('worst_case', 'mean', 'variance')
+        verbose: Whether to print progress
+        random_state: Random seed for reproducibility
+        
+    Returns:
+        Dictionary with optimization results
+    """
+    import numpy as np
+    from sklearn.model_selection import KFold
+    
+    if lambda_values is None:
+        lambda_values = [0.1, 1.0, 10.0, 100.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0]
+    
+    np.random.seed(random_state)
+    kfold = KFold(n_splits=cv_folds, shuffle=True, random_state=random_state)
+    
+    cv_results = {}
+    
+    if verbose:
+        print(f"Cross-validation with {cv_folds} folds for {len(lambda_values)} lambda values...")
+        print(f"Optimization objective: {objective}")
+    
+    for lambda_reg in lambda_values:
+        fold_errors = []
+        
+        if verbose:
+            print(f"  Testing λ = {lambda_reg}")
+        
+        for fold_idx, (train_idx, val_idx) in enumerate(kfold.split(x_train)):
+            # Split data
+            x_fold_train = x_train[train_idx]
+            y_fold_train = y_train[train_idx]
+            x_fold_val = x_train[val_idx]
+            y_fold_val = y_train[val_idx]
+            
+            # Train model
+            w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, verbose=False)
+            
+            # Predict on validation set
+            y_pred_fold = x_fold_val @ w_fold
+            
+            # Compute normalized RMSE for each spatial location
+            fold_nrmse = []
+            for i in range(y_fold_val.shape[1]):  # For each spatial location
+                y_true_i = y_fold_val[:, i]
+                y_pred_i = y_pred_fold[:, i]
+                
+                # Compute NRMSE
+                rmse = np.sqrt(np.mean((y_true_i - y_pred_i)**2))
+                y_range = np.max(y_true_i) - np.min(y_true_i)
+                nrmse = rmse / (y_range + 1e-8)  # Add small epsilon to avoid division by zero
+                fold_nrmse.append(nrmse)
+            
+            fold_errors.append(fold_nrmse)
+        
+        # Aggregate results across folds
+        fold_errors = np.array(fold_errors)  # Shape: (n_folds, n_spatial_locations)
+        
+        # Compute statistics for this lambda
+        mean_nrmse_per_location = np.mean(fold_errors, axis=0)
+        
+        cv_results[lambda_reg] = {
+            'mean_nrmse': np.mean(mean_nrmse_per_location),
+            'worst_nrmse': np.max(mean_nrmse_per_location),
+            'nrmse_variance': np.var(mean_nrmse_per_location),
+            'fold_errors': fold_errors,
+            'mean_nrmse_per_location': mean_nrmse_per_location
+        }
+        
+        if verbose:
+            print(f"    Mean NRMSE: {cv_results[lambda_reg]['mean_nrmse']:.4f}")
+            print(f"    Worst NRMSE: {cv_results[lambda_reg]['worst_nrmse']:.4f}")
+            print(f"    NRMSE Variance: {cv_results[lambda_reg]['nrmse_variance']:.4f}")
+    
+    # Select best lambda based on objective
+    if objective == 'worst_case':
+        best_lambda = min(cv_results.keys(), key=lambda x: cv_results[x]['worst_nrmse'])
+        optimization_metric = 'worst_nrmse'
+    elif objective == 'mean':
+        best_lambda = min(cv_results.keys(), key=lambda x: cv_results[x]['mean_nrmse'])
+        optimization_metric = 'mean_nrmse'
+    elif objective == 'variance':
+        best_lambda = min(cv_results.keys(), key=lambda x: cv_results[x]['nrmse_variance'])
+        optimization_metric = 'nrmse_variance'
+    else:
+        raise ValueError(f"Unknown objective: {objective}")
+    
+    if verbose:
+        print(f"\nOptimization complete!")
+        print(f"Best λ = {best_lambda} (optimizing {optimization_metric})")
+        print(f"Best {optimization_metric}: {cv_results[best_lambda][optimization_metric]:.4f}")
+    
+    return {
+        'best_lambda': best_lambda,
+        'optimization_metric': optimization_metric,
+        'cv_results': cv_results,
+        'lambda_values': lambda_values,
+        'cv_folds': cv_folds,
+        'objective': objective
+    }
 
-        # compute training loss
-        loss[m] = torch.mean((y_pred[m][:,:,notnan_idx] - y[m][:,:,notnan_idx])**2,dtype=dtype)
-
-    return loss
-
+def plot_cv_lambda_results(cv_optimization_results, figsize=(15, 5)):
+    """
+    Plot cross-validation results for lambda optimization.
+    
+    Args:
+        cv_optimization_results: Results from cross_validation_lambda_optimization
+        figsize: Figure size tuple
+        
+    Returns:
+        matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    
+    cv_results = cv_optimization_results['cv_results']
+    best_lambda = cv_optimization_results['best_lambda']
+    objective = cv_optimization_results['objective']
+    
+    lambdas = list(cv_results.keys())
+    mean_nrmse = [cv_results[l]['mean_nrmse'] for l in lambdas]
+    worst_nrmse = [cv_results[l]['worst_nrmse'] for l in lambdas]
+    nrmse_variance = [cv_results[l]['nrmse_variance'] for l in lambdas]
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
+    
+    # Plot 1: Mean NRMSE
+    ax1.semilogx(lambdas, mean_nrmse, 'o-', color='blue', label='Mean NRMSE')
+    ax1.axvline(best_lambda, color='red', linestyle='--', alpha=0.7, label=f'Best λ = {best_lambda}')
+    ax1.set_xlabel('Regularization Parameter (λ)')
+    ax1.set_ylabel('Mean NRMSE')
+    ax1.set_title('Cross-Validation: Mean NRMSE')
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    
+    # Plot 2: Worst NRMSE
+    ax2.semilogx(lambdas, worst_nrmse, 'o-', color='red', label='Worst NRMSE')
+    ax2.axvline(best_lambda, color='red', linestyle='--', alpha=0.7, label=f'Best λ = {best_lambda}')
+    ax2.set_xlabel('Regularization Parameter (λ)')
+    ax2.set_ylabel('Worst Case NRMSE')
+    ax2.set_title('Cross-Validation: Worst Case NRMSE')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    
+    # Highlight if optimizing worst case
+    if objective == 'worst_case':
+        ax2.set_facecolor('#fff0f0')
+        ax2.set_title('Cross-Validation: Worst Case NRMSE ⭐', fontweight='bold')
+    
+    # Plot 3: NRMSE Variance
+    ax3.semilogx(lambdas, nrmse_variance, 'o-', color='green', label='NRMSE Variance')
+    ax3.axvline(best_lambda, color='red', linestyle='--', alpha=0.7, label=f'Best λ = {best_lambda}')
+    ax3.set_xlabel('Regularization Parameter (λ)')
+    ax3.set_ylabel('NRMSE Variance')
+    ax3.set_title('Cross-Validation: NRMSE Variance')
+    ax3.grid(True, alpha=0.3)
+    ax3.legend()
+    
+    plt.tight_layout()
+    return fig

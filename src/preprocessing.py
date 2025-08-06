@@ -4,6 +4,8 @@
 import skimage
 import numpy as np
 import torch
+import torch.nn.functional as F
+from typing import Dict, Tuple, List
 
 
 def data_processing(data,longitude,latitude,max_models = 15):
@@ -299,3 +301,202 @@ def stack_models_and_runs(models,x,y, dtype=torch.float32):
             y_stacked = torch.cat((y_stacked, y[m]), dim=0)
 
     return x_stacked, y_stacked
+
+
+def merge_training_data(x_dict: Dict, y_dict: Dict, 
+                       dtype: torch.dtype = torch.float32) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Merge training data from multiple models into single tensors.
+    
+    Args:
+        x_dict: Dictionary of input data
+        y_dict: Dictionary of target data
+        dtype: PyTorch data type
+        
+    Returns:
+        x_train: Merged input tensor
+        y_train: Merged target tensor
+    """
+    for idx_m, model in enumerate(x_dict.keys()):
+        model_x = torch.from_numpy(x_dict[model]).to(dtype)
+        model_y = torch.from_numpy(y_dict[model]).to(dtype)
+        
+        # Reshape and normalize by sqrt of number of runs
+        model_x = model_x.reshape(-1, model_x.shape[-2] * model_x.shape[-1])
+        model_y = model_y.reshape(-1, model_y.shape[-2] * model_y.shape[-1])
+        
+        norm_factor = torch.sqrt(torch.tensor(x_dict[model].shape[0], dtype=dtype))
+        model_x /= norm_factor
+        model_y /= norm_factor
+        
+        if idx_m == 0:
+            x_train = model_x
+            y_train = model_y
+        else:
+            x_train = torch.cat([x_train, model_x], dim=0)
+            y_train = torch.cat([y_train, model_y], dim=0)
+            
+    return x_train, y_train
+
+def reshape_training_data(x_dict: Dict, y_dict: Dict,
+                         dtype: torch.dtype = torch.float32) -> Tuple[Dict, Dict]:
+    """
+    Reshape training data while keeping model separation.
+    
+    Args:
+        x_dict: Dictionary of input data
+        y_dict: Dictionary of target data
+        dtype: PyTorch data type
+        
+    Returns:
+        x_train_dict: Dictionary of reshaped input tensors
+        y_train_dict: Dictionary of reshaped target tensors
+    """
+    x_train_dict = {}
+    y_train_dict = {}
+    
+    for model in x_dict.keys():
+        x_data = x_dict[model]
+        y_data = y_dict[model]
+        
+        x_train_dict[model] = torch.from_numpy(x_data).to(dtype).reshape(
+            x_data.shape[0], x_data.shape[1], -1
+        )
+        y_train_dict[model] = torch.from_numpy(y_data).to(dtype).reshape(
+            y_data.shape[0], y_data.shape[1], -1
+        )
+        
+    return x_train_dict, y_train_dict
+
+def stack_models_and_runs(model_list: List[str], x_dict: Dict, y_dict: Dict,
+                         dtype: torch.dtype = torch.float32) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Stack all ensemble members of all models into single tensors.
+    
+    Args:
+        model_list: List of model names
+        x_dict: Dictionary of input data
+        y_dict: Dictionary of target data
+        dtype: PyTorch data type
+        
+    Returns:
+        x_stacked: Stacked input tensor
+        y_stacked: Stacked target tensor
+    """
+    for idx_m, model in enumerate(model_list):
+        model_x = torch.from_numpy(x_dict[model]).view(x_dict[model].shape[0], x_dict[model].shape[1], -1)
+        model_y = torch.from_numpy(y_dict[model]).view(y_dict[model].shape[0], y_dict[model].shape[1], -1)
+        
+        if idx_m == 0:
+            x_stacked = model_x
+            y_stacked = model_y
+        else:
+            x_stacked = torch.cat((x_stacked, model_x), dim=0)
+            y_stacked = torch.cat((y_stacked, model_y), dim=0)
+            
+    return x_stacked.to(dtype), y_stacked.to(dtype)
+
+# Smoothing functions
+def moving_average_smoothing(x: torch.Tensor, window_size: int = 5, 
+                           mode: str = 'same') -> torch.Tensor:
+    """
+    Apply moving average smoothing to multivariate time series.
+    
+    Args:
+        x: Input tensor of shape (n_samples, n_timesteps, n_features)
+        window_size: Size of moving average window
+        mode: Padding mode ('same' or 'valid')
+        
+    Returns:
+        Smoothed tensor
+    """
+    n_samples, n_timesteps, n_features = x.shape
+    
+    # Create uniform kernel
+    kernel = torch.ones(1, 1, window_size, dtype=x.dtype, device=x.device) / window_size
+    
+    # Reshape for conv1d
+    x_reshaped = x.permute(0, 2, 1).reshape(n_samples * n_features, 1, n_timesteps)
+    
+    if mode == 'same':
+        padding = window_size // 2
+        x_padded = F.pad(x_reshaped, (padding, padding), mode='reflect')
+        smoothed = F.conv1d(x_padded, kernel)
+        
+        # Ensure same length as input
+        if smoothed.shape[-1] > n_timesteps:
+            smoothed = smoothed[:, :, :n_timesteps]
+        elif smoothed.shape[-1] < n_timesteps:
+            padding_needed = n_timesteps - smoothed.shape[-1]
+            smoothed = F.pad(smoothed, (0, padding_needed), mode='replicate')
+    else:
+        smoothed = F.conv1d(x_reshaped, kernel)
+    
+    # Reshape back
+    if mode == 'same':
+        smoothed = smoothed.reshape(n_samples, n_features, n_timesteps).permute(0, 2, 1)
+    else:
+        new_timesteps = smoothed.shape[-1]
+        smoothed = smoothed.reshape(n_samples, n_features, new_timesteps).permute(0, 2, 1)
+    
+    return smoothed
+
+def exponential_smoothing(x: torch.Tensor, alpha: float = 0.1) -> torch.Tensor:
+    """
+    Apply exponential smoothing to time series.
+    
+    Args:
+        x: Input tensor of shape (n_samples, n_timesteps, n_features)
+        alpha: Smoothing parameter (0 < alpha <= 1)
+        
+    Returns:
+        Smoothed tensor
+    """
+    smoothed = torch.zeros_like(x)
+    smoothed[:, 0, :] = x[:, 0, :]
+    
+    for t in range(1, x.shape[1]):
+        smoothed[:, t, :] = alpha * x[:, t, :] + (1 - alpha) * smoothed[:, t-1, :]
+    
+    return smoothed
+
+def gaussian_smoothing(x: torch.Tensor, window_size: int = 5, 
+                      sigma: float = 1.0) -> torch.Tensor:
+    """
+    Apply Gaussian smoothing to time series.
+    
+    Args:
+        x: Input tensor of shape (n_samples, n_timesteps, n_features)
+        window_size: Size of Gaussian kernel (should be odd)
+        sigma: Standard deviation of Gaussian kernel
+        
+    Returns:
+        Smoothed tensor
+    """
+    n_samples, n_timesteps, n_features = x.shape
+    
+    # Create Gaussian kernel
+    kernel_range = torch.arange(window_size, dtype=x.dtype, device=x.device) - window_size // 2
+    kernel = torch.exp(-0.5 * (kernel_range / sigma) ** 2)
+    kernel = kernel / kernel.sum()
+    kernel = kernel.view(1, 1, window_size)
+    
+    # Reshape for conv1d
+    x_reshaped = x.permute(0, 2, 1).reshape(n_samples * n_features, 1, n_timesteps)
+    
+    # Apply padding and convolution
+    padding = window_size // 2
+    x_padded = F.pad(x_reshaped, (padding, padding), mode='reflect')
+    smoothed = F.conv1d(x_padded, kernel)
+    
+    # Ensure same length as input
+    if smoothed.shape[-1] > n_timesteps:
+        smoothed = smoothed[:, :, :n_timesteps]
+    elif smoothed.shape[-1] < n_timesteps:
+        padding_needed = n_timesteps - smoothed.shape[-1]
+        smoothed = F.pad(smoothed, (0, padding_needed), mode='replicate')
+    
+    # Reshape back
+    smoothed = smoothed.reshape(n_samples, n_features, n_timesteps).permute(0, 2, 1)
+    
+    return smoothed
