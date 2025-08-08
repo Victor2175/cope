@@ -21,8 +21,8 @@ class ForceSMIPEvaluator:
         Returns:
             Normalized RMSE values
         """
-        numerator = np.linalg.norm(pred_trends - true_trends, axis=1)
-        denominator = np.linalg.norm(true_trends, axis=1)
+        numerator = np.sqrt(np.nansum((pred_trends - true_trends) ** 2, axis=1))
+        denominator = np.sqrt(np.nansum(true_trends ** 2, axis=1))
         
         return numerator / denominator
     
@@ -38,8 +38,8 @@ class ForceSMIPEvaluator:
         Returns:
             Amplitude ratio values
         """
-        pred_amplitude = np.linalg.norm(pred_trends, axis=1)
-        true_amplitude = np.linalg.norm(true_trends, axis=1)
+        pred_amplitude = np.sqrt(np.nansum(pred_trends ** 2, axis=1))
+        true_amplitude = np.sqrt(np.nansum(true_trends ** 2, axis=1))
         
         return pred_amplitude / true_amplitude
     

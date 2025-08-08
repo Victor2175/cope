@@ -500,3 +500,146 @@ def gaussian_smoothing(x: torch.Tensor, window_size: int = 5,
     smoothed = smoothed.reshape(n_samples, n_features, n_timesteps).permute(0, 2, 1)
     
     return smoothed
+
+
+
+def filter_training_data_by_indices(x_train_merged: torch.Tensor, 
+                                   y_train_merged: torch.Tensor,
+                                   valid_indices: List[int]) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Filter merged training data to keep only valid spatial indices.
+    
+    Args:
+        x_train_merged: Input training data tensor (n_samples, n_features)
+        y_train_merged: Target training data tensor (n_samples, n_features)
+        valid_indices: List of valid spatial indices to keep
+        
+    Returns:
+        Tuple of (filtered_x_train, filtered_y_train)
+    """
+    x_train_filtered = x_train_merged[:, valid_indices]
+    y_train_filtered = y_train_merged[:, valid_indices]
+    
+    return x_train_filtered, y_train_filtered
+
+def filter_training_dict_by_indices(x_train_dict: Dict[str, torch.Tensor],
+                                   y_train_dict: Dict[str, torch.Tensor],
+                                   valid_indices: List[int],
+                                   verbose: bool = True) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    """
+    Filter training data dictionaries to keep only valid spatial indices.
+    
+    Args:
+        x_train_dict: Dictionary of input training tensors
+        y_train_dict: Dictionary of target training tensors
+        valid_indices: List of valid spatial indices to keep
+        verbose: Whether to print progress
+        
+    Returns:
+        Tuple of (filtered_x_dict, filtered_y_dict)
+    """
+    x_train_filtered = {}
+    y_train_filtered = {}
+    
+    if verbose:
+        print(f"Filtering training dictionaries...")
+        print(f"Keeping {len(valid_indices)} valid spatial features")
+    
+    for model_name in x_train_dict.keys():
+        # Filter input data (shape: n_samples, n_time, n_spatial)
+        x_train_filtered[model_name] = x_train_dict[model_name][:, :, valid_indices]
+        
+        # Filter target data
+        y_train_filtered[model_name] = y_train_dict[model_name][:, :, valid_indices]
+        
+        if verbose:
+            original_shape_x = x_train_dict[model_name].shape
+            filtered_shape_x = x_train_filtered[model_name].shape
+            print(f"{model_name}: X {original_shape_x} -> {filtered_shape_x}")
+    
+    return x_train_filtered, y_train_filtered
+
+def filter_test_data_by_indices(x_test: torch.Tensor,
+                               valid_indices: List[int]) -> torch.Tensor:
+    """
+    Filter test data to keep only valid spatial indices.
+    
+    Args:
+        x_test: Test data tensor (n_samples, n_time, n_spatial)
+        valid_indices: List of valid spatial indices to keep
+        
+    Returns:
+        Filtered test data tensor
+    """
+    return x_test[:, :, valid_indices]
+
+def apply_notnan_filter_complete(x_train_merged: torch.Tensor,
+                                y_train_merged: torch.Tensor,
+                                x_train_dict: Dict[str, torch.Tensor],
+                                y_train_dict: Dict[str, torch.Tensor],
+                                x_test: torch.Tensor,
+                                notnan_indices: List[int],
+                                verbose: bool = True) -> Tuple[torch.Tensor, torch.Tensor, 
+                                                              Dict[str, torch.Tensor], Dict[str, torch.Tensor],
+                                                              torch.Tensor]:
+    """
+    Apply not-NaN filter to all training and test data consistently.
+    
+    Args:
+        x_train_merged: Merged input training data
+        y_train_merged: Merged target training data
+        x_train_dict: Dictionary of input training data
+        y_train_dict: Dictionary of target training data
+        x_test: Test data
+        notnan_indices: List of valid (not-NaN) spatial indices
+        verbose: Whether to print progress
+        
+    Returns:
+        Tuple of (filtered_x_train_merged, filtered_y_train_merged,
+                 filtered_x_train_dict, filtered_y_train_dict, filtered_x_test)
+    """
+    if verbose:
+        print("="*70)
+        print("              APPLYING NOT-NAN FILTER TO ALL DATA")
+        print("="*70)
+        print(f"Valid indices count: {len(notnan_indices)}")
+    
+    # Filter merged training data
+    if verbose:
+        print("\n1. Filtering merged training data...")
+    x_train_merged_filtered, y_train_merged_filtered = filter_training_data_by_indices(
+        x_train_merged, y_train_merged, notnan_indices
+    )
+    
+    if verbose:
+        print(f"   X: {x_train_merged.shape} -> {x_train_merged_filtered.shape}")
+        print(f"   Y: {y_train_merged.shape} -> {y_train_merged_filtered.shape}")
+    
+    # Filter training dictionaries
+    if verbose:
+        print("\n2. Filtering training dictionaries...")
+    x_train_dict_filtered, y_train_dict_filtered = filter_training_dict_by_indices(
+        x_train_dict, y_train_dict, notnan_indices, verbose=verbose
+    )
+    
+    # Filter test data
+    if verbose:
+        print(f"\n3. Filtering test data...")
+    x_test_filtered = filter_test_data_by_indices(x_test, notnan_indices)
+    
+    if verbose:
+        print(f"   Test: {x_test.shape} -> {x_test_filtered.shape}")
+        
+        # Summary
+        original_features = x_train_merged.shape[1]
+        filtered_features = len(notnan_indices)
+        reduction_pct = (1 - filtered_features/original_features) * 100
+        
+        print(f"\n=== FILTERING SUMMARY ===")
+        print(f"Original spatial features: {original_features}")
+        print(f"Filtered spatial features: {filtered_features}")
+        print(f"Features removed: {original_features - filtered_features}")
+        print(f"Reduction: {reduction_pct:.1f}%")
+    
+    return (x_train_merged_filtered, y_train_merged_filtered,
+            x_train_dict_filtered, y_train_dict_filtered, x_test_filtered)

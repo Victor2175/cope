@@ -26,6 +26,15 @@ class ForceSMIPDataLoader:
         path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Amon/{variable}')
         
         if not os.path.exists(path):
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Omon/{variable}')
+
+        if not os.path.exists(path):
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Lmon/{variable}')
+
+        if not os.path.exists(path):
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/OImon/{variable}')
+        
+        if not os.path.exists(path):
             raise FileNotFoundError(f"Training data path not found: {path}")
             
         dir_list = os.listdir(path)

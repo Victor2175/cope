@@ -176,7 +176,7 @@ class WeightedRidgeRegression:
         
     def train_per_model(self, x_dict: Dict[str, torch.Tensor], 
                        y_dict: Dict[str, torch.Tensor],
-                       lambda_reg: float, rank: int = 10, 
+                       lambda_reg: float, rank: int = 10,
                        verbose: bool = False) -> Dict[str, Dict]:
         """
         Train ridge regression for each model with low-rank preparation.
@@ -199,7 +199,7 @@ class WeightedRidgeRegression:
                 
             x_model = x_dict[model_name]
             y_model = y_dict[model_name]
-            
+
             # Ensure 2D tensors for individual model training
             if x_model.dim() == 3:
                 x_model = x_model.reshape(-1, x_model.shape[-1])
