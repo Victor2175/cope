@@ -33,7 +33,6 @@ def ridge_regression(x: torch.Tensor, y: torch.Tensor, lambda_reg: float,
     XtX = x.T @ x
     XtY = x.T @ y
     I = torch.eye(XtX.shape[0], dtype=XtX.dtype, device=XtX.device)
-    
     w = torch.linalg.solve(XtX + lambda_reg * I, XtY)
     
     if verbose:
@@ -48,13 +47,14 @@ class LowRankSolver:
     """
     
     def __init__(self):
+        self.W_full = None
         self.U = None
         self.S = None
         self.Vt = None
         self.XtY = None
         self.is_fitted = False
         
-    def fit(self, x: torch.Tensor, y: torch.Tensor, w_full: torch.Tensor, 
+    def fit(self, x: torch.Tensor, y: torch.Tensor, w_full: torch.Tensor, lambda_reg: float = 1.0, 
             verbose: bool = False) -> None:
         """
         Compute and store SVD components for efficient rank-k solutions.
@@ -63,6 +63,7 @@ class LowRankSolver:
             x: Input features 
             y: Target values
             w_full: Full ridge regression solution
+            lambda_reg: Regularization parameter
             verbose: Whether to print progress
         """
         if verbose:
@@ -74,8 +75,15 @@ class LowRankSolver:
         if y.dim() == 3:
             y = y.reshape(-1, y.shape[-1])
             
+        # save w_full
+        self.W_full = w_full
+        
+        # build the concatenation of (X, sqrt{lambda} I_p)
+        I_p = torch.eye(x.shape[1], dtype=x.dtype, device=x.device)
+        x_augmented = torch.cat([x, torch.sqrt(torch.tensor(lambda_reg, dtype=x.dtype, device=x.device)) * I_p], dim=0)
+
         # Compute SVD of the full solution
-        self.U, self.S, self.Vt = torch.linalg.svd(w_full, full_matrices=False)
+        self.U, self.S, self.Vt = torch.linalg.svd(x_augmented @ w_full, full_matrices=False)
         self.XtY = x.T @ y
         
         if verbose:
@@ -107,7 +115,9 @@ class LowRankSolver:
             print(f"Computing rank-{rank} approximation...")
             
         # Reconstruct with only top-k singular values
-        w_k = self.U[:, :rank] @ torch.diag(self.S[:rank]) @ self.Vt[:rank, :]
+        # w_k = self.U[:, :rank] @ torch.diag(self.S[:rank]) @ self.Vt[:rank, :]
+        w_k = self.W_full @ self.Vt[:rank, :].T @ self.Vt[:rank, :]
+
         
         if verbose:
             print(f"Rank-{rank} solution computed: {w_k.shape}")
