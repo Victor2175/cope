@@ -659,3 +659,67 @@ def plot_cv_lambda_results(cv_optimization_results, figsize=(15, 5)):
     
     plt.tight_layout()
     return fig
+
+
+def plot_cv_lambda_rank_results(cv_optimization_results, figsize=(15, 5)):
+    """
+    Plot cross-validation results for lambda optimization.
+
+    Args:
+        cv_optimization_results: Results from cross_validation_lambda_optimization
+        figsize: Figure size tuple
+
+    Returns:
+        matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+
+    cv_results = cv_optimization_results['cv_results']
+    best_lambda = cv_optimization_results['best_lambda']
+    objective = cv_optimization_results['objective']
+
+    lambdas_rank_values = list(cv_results.keys())
+    lambdas = sorted(list(set([lambda_reg for (lambda_reg, _) in lambdas_rank_values])))
+    rank_values = sorted(list(set([rank for (_, rank) in lambdas_rank_values])))
+
+    mean_nrmse = np.zeros((len(lambdas), len(rank_values)), dtype=np.float32)
+    worst_nrmse = np.zeros((len(lambdas), len(rank_values)), dtype=np.float32)
+
+    for (i, l) in enumerate(lambdas):
+        for (j, r) in enumerate(rank_values):
+            mean_nrmse[i, j] = cv_results[(l, r)]['mean_nrmse']
+            worst_nrmse[i, j] = cv_results[(l, r)]['worst_nrmse']
+
+    X, Y = np.meshgrid(lambdas, rank_values)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Use perceptually uniform colormaps
+    cmap = "plasma"
+
+    c1 = ax1.pcolormesh(X, Y, mean_nrmse.T, shading='auto', cmap=cmap, edgecolors='k', linewidth=0.2)
+    fig.colorbar(c1, ax=ax1, label='Mean NRMSE')
+    ax1.set_title('Cross-Validation: Mean NRMSE')
+    ax1.set_xlabel('Lambda (λ)')
+    ax1.set_ylabel('Rank (r)')
+    ax1.set_yscale('log')
+    ax1.set_xticks(lambdas)
+    ax1.set_xticklabels([str(l) for l in lambdas])
+    ax1.set_yticks(rank_values)
+    ax1.set_yticklabels([str(r) for r in rank_values])
+    ax1.grid(True, alpha=0.3)
+
+    c2 = ax2.pcolormesh(X, Y, worst_nrmse.T, shading='auto', cmap=cmap, edgecolors='k', linewidth=0.2)
+    fig.colorbar(c2, ax=ax2, label='Worst NRMSE')
+    ax2.set_title('Cross-Validation: Worst NRMSE')
+    ax2.set_xlabel('Lambda (λ)')
+    ax2.set_ylabel('Rank (r)')
+    ax2.set_yscale('log')
+    ax2.set_xticks(lambdas)
+    ax2.set_xticklabels([str(l) for l in lambdas])
+    ax2.set_yticks(rank_values)
+    ax2.set_yticklabels([str(r) for r in rank_values])
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    return fig
