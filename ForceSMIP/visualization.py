@@ -81,9 +81,6 @@ class ForceSMIPVisualizer:
         
         return fig
 
-
-        return pcs
-
     def plot_robinson_projection(self, trend_data: np.ndarray, 
                                 title: str = "Global Temperature Trend",
                                 cmap: str = 'RdBu_r', 
@@ -145,8 +142,7 @@ class ForceSMIPVisualizer:
         cbar.set_label('Temperature Trend (°C/year)', fontsize=12)
         
         projection_type = "Pacific Centered" if central_longitude == 180 else "Atlantic Centered"
-        # plt.title(f'{title} - Model {self.test_model_names[run_idx]}\n(Robinson Projection - {projection_type})', 
-        #           fontsize=14, pad=20)
+        plt.title(f'{title} - Model {self.test_model_names[run_idx]}\n(Robinson Projection - {projection_type})', fontsize=14, pad=20)
         plt.tight_layout()
         
         return fig
@@ -157,8 +153,8 @@ class ForceSMIPVisualizer:
                               run_idx: int = 0,
                               central_longitude: float = 180,
                               cmap: str = 'RdBu_r',
-                              vmin: float = -0.05,
-                              vmax: float = 0.05) -> plt.Figure:
+                              vmin: float = None,
+                              vmax: float = None) -> plt.Figure:
         """
         Plot three Robinson projections side by side for comparison.
         
@@ -174,6 +170,11 @@ class ForceSMIPVisualizer:
         Returns:
             Matplotlib figure
         """
+        # Set color limits if not provided
+        if vmin is None or vmax is None:
+            vmax = np.nanmax(np.abs(trend_forced))
+            vmin = -vmax
+
         # Reshape all trend data to 2D grids
         trend_forced_2d = trend_forced[run_idx, :].reshape(self.latitude.shape[0], self.longitude.shape[0])
         trend_pred_2d = trend_prediction[run_idx, :].reshape(self.latitude.shape[0], self.longitude.shape[0])
@@ -181,7 +182,10 @@ class ForceSMIPVisualizer:
         
         # Create meshgrid for plotting
         lon_2d, lat_2d = np.meshgrid(self.longitude, self.latitude)
-        
+
+        # levels
+        levels = np.linspace(vmin, vmax, 20)
+
         # Create figure with three subplots
         fig = plt.figure(figsize=(20, 12))
         
@@ -194,7 +198,7 @@ class ForceSMIPVisualizer:
         ax1.add_feature(cfeature.LAND, color='lightgray', alpha=0.3)
         
         im1 = ax1.contourf(lon_2d, lat_2d, trend_forced_2d,
-                           levels=20, cmap=cmap, vmin=vmin, vmax=vmax,
+                           levels=levels, cmap=cmap,
                            transform=ccrs.PlateCarree(), extend='both')
         ax1.set_title(f'Ground Truth\n(Forced Response Trend)\nModel {self.test_model_names[run_idx]}', 
                       fontsize=14, pad=20)
@@ -223,7 +227,7 @@ class ForceSMIPVisualizer:
         ax3.add_feature(cfeature.LAND, color='lightgray', alpha=0.3)
         
         im3 = ax3.contourf(lon_2d, lat_2d, trend_test_2d,
-                           levels=20, cmap=cmap, vmin=vmin, vmax=vmax,
+                           levels=levels, cmap=cmap,
                            transform=ccrs.PlateCarree(), extend='both')
         ax3.set_title(f'Test Member\n(Raw Input Trend)\nModel {self.test_model_names[run_idx]}', 
                       fontsize=14, pad=20)
@@ -234,8 +238,8 @@ class ForceSMIPVisualizer:
         cbar.set_label('Temperature Trend (°C/year)', fontsize=14)
         
         projection_type = "Pacific Centered" if central_longitude == 180 else "Atlantic Centered"
-        # plt.suptitle(f'Temperature Trend Comparison - {self.test_model_names[run_idx]}\n(Robinson Projection - {projection_type})', 
-                    #  fontsize=16, y=0.95)
+        plt.suptitle(f'Temperature Trend Comparison - {self.test_model_names[run_idx]}\n(Robinson Projection - {projection_type})', 
+                     fontsize=16, y=0.95)
         # plt.tight_layout()
         
         return fig

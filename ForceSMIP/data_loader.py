@@ -22,17 +22,36 @@ class ForceSMIPDataLoader:
             longitude: Longitude coordinates
             latitude: Latitude coordinates
         """
+        variable_tmp = variable
+        if variable == 'tasmax':
+            variable_tmp = 'monmaxtasmax'
+
+        if variable == 'tasmin':
+            variable_tmp = 'monmintasmin'
+
+        if variable == 'prmax':
+            variable_tmp = 'monmaxpr'
+            variable = 'pr'
+
+        if variable == 'zmta':
+            variable_tmp = 'zmta'
+            variable = 'ta'
+
+
         # Fix the path construction - add 'ForceSMIP' subdirectory
-        path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Amon/{variable}')
+        path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Amon/{variable_tmp}')
         
         if not os.path.exists(path):
-            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Omon/{variable}')
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Omon/{variable_tmp}')
 
         if not os.path.exists(path):
-            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Lmon/{variable}')
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Lmon/{variable_tmp}')
 
         if not os.path.exists(path):
-            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/OImon/{variable}')
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/OImon/{variable_tmp}')
+
+        if not os.path.exists(path):
+            path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Aday/{variable_tmp}')
         
         if not os.path.exists(path):
             raise FileNotFoundError(f"Training data path not found: {path}")
@@ -55,9 +74,9 @@ class ForceSMIPDataLoader:
                 file_path = os.path.join(dir_path, file)
                 
                 with netcdf.Dataset(file_path, 'r') as nc_file:
-                    time = np.array(nc_file.variables['time'][:])
-                    longitude = np.array(nc_file.variables['lon'][:])
-                    latitude = np.array(nc_file.variables['lat'][:])
+                    time = np.array(nc_file.variables['time'])
+                    longitude = np.array(nc_file.variables['lon'])
+                    latitude = np.array(nc_file.variables['lat'])
                     data = np.array(nc_file.variables[variable])
                     
                     # Monthly centering
@@ -85,8 +104,20 @@ class ForceSMIPDataLoader:
             data_test: Test data array
         """
         if test_models is None:
-            test_models = ['B', 'D', 'E', 'G', 'J']
-            
+            test_models = ['1B', '1D', '1E', '1G', '1J']
+
+        variable_tmp = variable
+        if variable == 'tasmax':
+            variable_tmp = 'monmaxtasmax'
+        
+        if variable == 'tasmin':
+            variable_tmp = 'monmintasmin'
+        
+        if variable == 'prmax':
+            variable_tmp = 'monmaxpr'
+            variable = 'pr'
+
+
         # Fix the path construction
         path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/Evaluation-Tier1/')
         
@@ -98,23 +129,24 @@ class ForceSMIPDataLoader:
         data_test = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
         
         for file in file_list:
-            if file.startswith(f'{variable}_') and file.endswith('.nc'):
-                if file[9] in test_models:
-                    idx_test = test_models.index(file[9])
-                    print(f'Loading test data for {file[9]} at index {idx_test}')
-                    
-                    file_path = os.path.join(path, file)
-                    with netcdf.Dataset(file_path, 'r') as nc_file:
-                        time = np.array(nc_file.variables['time'])
-                        data = np.array(nc_file.variables[variable])
-                        data_test[idx_test, :, :, :] = data
+            if file.startswith(f'{variable_tmp}_') and file.endswith('.nc'):
+                for idx_model, model in enumerate(test_models):
+                    if model in file:
+                        idx_test = test_models.index(model)
+                        print(f'Loading test data for {model} at index {idx_test}')
+
+                        file_path = os.path.join(path, file)
+                        with netcdf.Dataset(file_path, 'r') as nc_file:
+                            time = np.array(nc_file.variables['time'])
+                            data = np.array(nc_file.variables[variable])
+                            data_test[idx_model, :, :, :] = data
                         
                         # Monthly centering
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
-                            monthly_mean = np.nanmean(data_test[idx_test, month_mask, :, :], axis=0)
-                            data_test[idx_test, month_mask, :, :] -= monthly_mean
-                            
+                            monthly_mean = np.nanmean(data_test[idx_model, month_mask, :, :], axis=0)
+                            data_test[idx_model, month_mask, :, :] -= monthly_mean
+
         return data_test
     
     def load_ground_truth(self, variable: str = 'tas',
@@ -130,8 +162,19 @@ class ForceSMIPDataLoader:
             data_ground_truth: Ground truth data array
         """
         if test_models is None:
-            test_models = ['B', 'D', 'E', 'G', 'J']
-            
+            test_models = ['1B', '1D', '1E', '1G', '1J']
+
+        variable_tmp = variable
+        if variable == 'tasmax':
+            variable_tmp = 'monmaxtasmax'
+ 
+        if variable == 'tasmin':
+            variable_tmp = 'monmintasmin'
+
+        if variable == 'prmax':
+            variable_tmp = 'monmaxpr'
+            variable = 'pr'
+
         # Fix the path construction
         path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/ensmeans-Tier1')
         
@@ -143,22 +186,22 @@ class ForceSMIPDataLoader:
         data_ground_truth = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
         
         for file in file_list:
-            if f'.{variable}.' in file:
-                if file[1] in test_models:
-                    idx_test = test_models.index(file[1])
-                    print(f'Loading ground truth for {file[1]} at index {idx_test}')
-                    
-                    file_path = os.path.join(path, file)
-                    with netcdf.Dataset(file_path, 'r') as nc_file:
-                        time = np.array(nc_file.variables['time'])
-                        data = np.array(nc_file.variables['arr_EM'])
-                        data_ground_truth[idx_test, :, :, :] = data
-                        
+            if f'.{variable_tmp}.' in file:
+                for idx_model, model in enumerate(test_models):
+                    if model in file:
+                        print(f'Loading ground truth for {model} at index {idx_model}')
+
+                        file_path = os.path.join(path, file)
+                        with netcdf.Dataset(file_path, 'r') as nc_file:
+                            time = np.array(nc_file.variables['time'])
+                            data = np.array(nc_file.variables['arr_EM'])
+                            data_ground_truth[idx_model, :, :, :] = data
+
                         # Monthly centering
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
-                            monthly_mean = np.nanmean(data_ground_truth[idx_test, month_mask, :, :], axis=0)
-                            data_ground_truth[idx_test, month_mask, :, :] -= monthly_mean
+                            monthly_mean = np.nanmean(data_ground_truth[idx_model, month_mask, :, :], axis=0)
+                            data_ground_truth[idx_model, month_mask, :, :] -= monthly_mean
                             
         return data_ground_truth
     
@@ -177,10 +220,20 @@ class ForceSMIPDataLoader:
             data_estimates: Estimates data array
         """
         if test_models is None:
-            test_models = ['B', 'D', 'E', 'G', 'J']
+            test_models = ['1B', '1D', '1E', '1G', '1J']
         if methods_to_center is None:
             methods_to_center = [8, 9, 14, 24]
-            
+
+        variable_tmp = variable
+        if variable == 'tasmax':
+            variable_tmp = 'monmaxtasmax'
+
+        if variable == 'tasmin':
+            variable_tmp = 'monmintasmin'
+
+        if variable == 'prmax':
+            variable_tmp = 'monmaxpr'
+
         # Fix the path construction
         path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/ForceSMIP-estimates-Tier1')
         
@@ -192,21 +245,21 @@ class ForceSMIPDataLoader:
         data_estimates = np.zeros((30, len(test_models), 876, 72, 144), dtype=np.float32)
         
         for file in file_list:
-            if file.startswith(f'{variable}_'):
+            if file.startswith(f'{variable_tmp}_'):
                 file_path = os.path.join(path, file)
                 
                 with netcdf.Dataset(file_path, 'r') as nc_file:
                     time = np.array(nc_file.variables['time'])
                     
-                    if file[5] in test_models:
-                        idx_test = test_models.index(file[5])
-                        data_estimates[:, idx_test, :, :, :] = np.array(nc_file.variables['forced_component'])
-        
+                    for idx_model, model in enumerate(test_models):
+                        if model in file:
+                            data_estimates[:, idx_model, :, :, :] = np.array(nc_file.variables['forced_component'])
+
         # Center specific methods
         for idx_m in methods_to_center:
             print(f'Centering data for method {idx_m}')
             for i in range(12):
-                month_mask = np.arange(time.shape[0]) % 12 == i
+                month_mask = np.arange(data_estimates.shape[2]) % 12 == i
                 monthly_mean = np.nanmean(data_estimates[idx_m, :, month_mask, :, :], axis=0)
                 data_estimates[idx_m, :, month_mask, :, :] -= monthly_mean
                 

@@ -115,7 +115,6 @@ class LowRankSolver:
             print(f"Computing rank-{rank} approximation...")
             
         # Reconstruct with only top-k singular values
-        # w_k = self.U[:, :rank] @ torch.diag(self.S[:rank]) @ self.Vt[:rank, :]
         w_k = self.W_full @ self.Vt[:rank, :].T @ self.Vt[:rank, :]
 
         
@@ -281,7 +280,8 @@ class WeightedRidgeRegression:
     
     def compute_weights(self, x_dict: Dict[str, torch.Tensor], 
                        y_dict: Dict[str, torch.Tensor],
-                       use_low_rank: bool = False, rank: Optional[int] = None) -> torch.Tensor:
+                       use_low_rank: bool = False, rank: Optional[int] = None,
+                       uniform: bool = False) -> torch.Tensor:
         """
         Compute model weights based on performance, with flexible rank selection.
         
@@ -295,34 +295,35 @@ class WeightedRidgeRegression:
             Model weights tensor
         """
         model_names = list(self.models.keys())
-        weights = torch.zeros(len(model_names))
+        weights = (1/len(model_names)) * torch.ones(len(model_names))
         
-        for i, model_name in enumerate(model_names):
-            x_val = x_dict[model_name]
-            y_val = y_dict[model_name]
-            
-            # Ensure 2D tensors
-            if x_val.dim() == 3:
-                x_val = x_val.reshape(-1, x_val.shape[-1])
-            if y_val.dim() == 3:
-                y_val = y_val.reshape(-1, y_val.shape[-1])
-            
-            if use_low_rank:
-                if rank is not None and rank != self.models[model_name]['rank']:
-                    # Get solution for specific rank
-                    w_model = self.low_rank_solvers[model_name].get_rank_k_solution(rank)
-                else:
-                    # Use pre-computed low-rank solution
-                    w_model = self.models[model_name]['low_rank']
-            else:
-                w_model = self.models[model_name]['full']
+        if uniform == False:
+            for i, model_name in enumerate(model_names):
+                x_val = x_dict[model_name]
+                y_val = y_dict[model_name]
                 
-            # Compute validation error
-            y_pred = x_val @ w_model
-            mse = torch.mean((y_val - y_pred)**2)
-            
-            # Weight inversely proportional to error
-            weights[i] = 1.0 / (mse + 1e-8)
+                # Ensure 2D tensors
+                if x_val.dim() == 3:
+                    x_val = x_val.reshape(-1, x_val.shape[-1])
+                if y_val.dim() == 3:
+                    y_val = y_val.reshape(-1, y_val.shape[-1])
+                
+                if use_low_rank:
+                    if rank is not None and rank != self.models[model_name]['rank']:
+                        # Get solution for specific rank
+                        w_model = self.low_rank_solvers[model_name].get_rank_k_solution(rank)
+                    else:
+                        # Use pre-computed low-rank solution
+                        w_model = self.models[model_name]['low_rank']
+                else:
+                    w_model = self.models[model_name]['full']
+                    
+                # Compute validation error
+                y_pred = x_val @ w_model
+                mse = torch.mean((y_val - y_pred)**2)
+                
+                # Weight inversely proportional to error
+                weights[i] = 1.0 / (mse + 1e-8)
             
         # Normalize weights
         weights = weights / torch.sum(weights)
@@ -489,7 +490,7 @@ def compute_trend(data: np.ndarray, years: slice = slice(30, None)) -> np.ndarra
     return trends
 
 
-def cross_validation_lambda_optimization(x_train, y_train, lambda_values=None, 
+def cross_validation_lambda_optimization(x_train_dict, y_train_dict, lambda_values=None, 
                                        cv_folds=5, objective='worst_case', 
                                        verbose=True, random_state=42):
     """
@@ -514,63 +515,94 @@ def cross_validation_lambda_optimization(x_train, y_train, lambda_values=None,
         lambda_values = [0.1, 1.0, 10.0, 100.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0]
     
     np.random.seed(random_state)
-    kfold = KFold(n_splits=cv_folds, shuffle=True, random_state=random_state)
-    
+
+    # we do leave one out validation on the training set    
     cv_results = {}
     
     if verbose:
         print(f"Cross-validation with {cv_folds} folds for {len(lambda_values)} lambda values...")
         print(f"Optimization objective: {objective}")
     
-    for lambda_reg in lambda_values:
-        fold_errors = []
-        
+    errors_mean = np.zeros(len(lambda_values), dtype=np.float32)
+    errors_q75 = np.zeros(len(lambda_values), dtype=np.float32)
+    errors_q90 = np.zeros(len(lambda_values), dtype=np.float32)
+    errors_q95 = np.zeros(len(lambda_values), dtype=np.float32)
+    errors_worst = np.zeros(len(lambda_values), dtype=np.float32) 
+
+    for idx_lambda, lambda_reg in enumerate(lambda_values):
+
         if verbose:
             print(f"  Testing λ = {lambda_reg}")
-        
-        for fold_idx, (train_idx, val_idx) in enumerate(kfold.split(x_train)):
-            # Split data
-            x_fold_train = x_train[train_idx]
-            y_fold_train = y_train[train_idx]
-            x_fold_val = x_train[val_idx]
-            y_fold_val = y_train[val_idx]
-            
+
+
+        fold_mean_trend_nrmse = np.zeros(len(x_train_dict.keys()), dtype=np.float32)
+        fold_q75_trend_nrmse = np.zeros(len(x_train_dict.keys()), dtype=np.float32)
+        fold_q90_trend_nrmse = np.zeros(len(x_train_dict.keys()), dtype=np.float32)
+        fold_q95_trend_nrmse = np.zeros(len(x_train_dict.keys()), dtype=np.float32)
+        fold_worst_trend_nrmse = np.zeros(len(x_train_dict.keys()), dtype=np.float32)
+
+        for idx_m, m in enumerate(x_train_dict.keys()):
+
+            # build the training set as the concatenation of all models except the one being validated
+            x_fold_train = np.concatenate([x_train_dict[k] for j, k in enumerate(x_train_dict.keys()) if j != idx_m], axis=0)
+            x_fold_train = torch.from_numpy(x_fold_train.reshape(-1, x_fold_train.shape[-1]))
+            y_fold_train = np.concatenate([y_train_dict[k] for j, k in enumerate(y_train_dict.keys()) if j != idx_m], axis=0)
+            y_fold_train = torch.from_numpy(y_fold_train.reshape(-1, y_fold_train.shape[-1]))
+
+            # build the test set
+            x_fold_test = x_train_dict[m]
+            y_fold_test = y_train_dict[m]
+
             # Train model
             w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, verbose=False)
             
             # Predict on validation set
-            y_pred_fold = x_fold_val @ w_fold
+            y_pred_fold = x_fold_test @ w_fold
             
-            # Compute normalized RMSE for each spatial location
-            fold_nrmse = []
-            for i in range(y_fold_val.shape[1]):  # For each spatial location
-                y_true_i = y_fold_val[:, i]
-                y_pred_i = y_pred_fold[:, i]
-                
-                # Compute NRMSE
-                rmse = np.sqrt(np.mean((y_true_i - y_pred_i)**2))
-                y_range = np.max(y_true_i) - np.min(y_true_i)
-                nrmse = rmse / (y_range + 1e-8)  # Add small epsilon to avoid division by zero
-                fold_nrmse.append(nrmse)
-            
-            fold_errors.append(fold_nrmse)
-        
-        # Aggregate results across folds
-        fold_errors = np.array(fold_errors)  # Shape: (n_folds, n_spatial_locations)
-        
-        # Compute statistics for this lambda
-        mean_nrmse_per_location = np.mean(fold_errors, axis=0)
-        
+            # compute the trend for each sample
+            trend_pred = np.zeros((y_pred_fold.shape[0], y_pred_fold.shape[2]))
+            trends_ground_truth = np.zeros((y_pred_fold.shape[0], y_pred_fold.shape[2]))
+            for j in range(y_pred_fold.shape[0]):
+                trend_pred[j,:] = np.polyfit(np.arange(y_pred_fold.shape[1]), y_pred_fold[j,:,:], 1)[0]
+                trends_ground_truth[j,:] = np.polyfit(np.arange(y_fold_test.shape[1]), y_fold_test[j,:,:], 1)[0]
+
+
+            # compute the normalized RMSE of the trend
+
+            nmrse = np.sqrt(np.nansum((trend_pred - trends_ground_truth)**2,axis=1))/np.sqrt(np.nansum(trends_ground_truth**2, axis=1))
+
+
+            fold_mean_trend_nrmse[idx_m] = np.mean(nmrse)
+            fold_q75_trend_nrmse[idx_m] = np.nanquantile(nmrse, 0.75)
+            fold_q90_trend_nrmse[idx_m] = np.nanquantile(nmrse, 0.90)
+            fold_q95_trend_nrmse[idx_m] = np.nanquantile(nmrse, 0.95)
+            fold_worst_trend_nrmse[idx_m] = np.nanmax(nmrse)
+
+
+
+        # Aggregate results only for the MEAN over runs
+        errors_mean[idx_lambda] = np.mean(fold_mean_trend_nrmse) 
+        errors_q75[idx_lambda] = np.nanquantile(fold_mean_trend_nrmse, 0.75)
+        errors_q90[idx_lambda] = np.nanquantile(fold_mean_trend_nrmse, 0.90)
+        errors_q95[idx_lambda] = np.nanquantile(fold_mean_trend_nrmse, 0.95)
+        errors_worst[idx_lambda] = np.max(fold_mean_trend_nrmse)  # Shape: (n_folds, n_spatial_locations)
+
+
+
         cv_results[lambda_reg] = {
-            'mean_nrmse': np.mean(mean_nrmse_per_location),
-            'worst_nrmse': np.max(mean_nrmse_per_location),
-            'nrmse_variance': np.var(mean_nrmse_per_location),
-            'fold_errors': fold_errors,
-            'mean_nrmse_per_location': mean_nrmse_per_location
+            'mean_nrmse': errors_mean[idx_lambda],
+            'q75_nrmse': errors_q75[idx_lambda],
+            'q90_nrmse': errors_q90[idx_lambda],
+            'q95_nrmse': errors_q95[idx_lambda],
+            'worst_nrmse': errors_worst[idx_lambda],
+            'nrmse_variance': np.nanvar(fold_mean_trend_nrmse)
         }
         
         if verbose:
             print(f"    Mean NRMSE: {cv_results[lambda_reg]['mean_nrmse']:.4f}")
+            print(f"   Q75 NRMSE: {cv_results[lambda_reg]['q75_nrmse']:.4f}")
+            print(f"   Q90 NRMSE: {cv_results[lambda_reg]['q90_nrmse']:.4f}")
+            print(f"   Q95 NRMSE: {cv_results[lambda_reg]['q95_nrmse']:.4f}")
             print(f"    Worst NRMSE: {cv_results[lambda_reg]['worst_nrmse']:.4f}")
             print(f"    NRMSE Variance: {cv_results[lambda_reg]['nrmse_variance']:.4f}")
     
@@ -597,6 +629,162 @@ def cross_validation_lambda_optimization(x_train, y_train, lambda_values=None,
         'optimization_metric': optimization_metric,
         'cv_results': cv_results,
         'lambda_values': lambda_values,
+        'cv_folds': cv_folds,
+        'objective': objective
+    }
+
+
+
+def cross_validation_lambda_rank_optimization(x_train_dict, y_train_dict, lambda_values=None, rank_values=None,
+                                       cv_folds=5, objective='worst_case', 
+                                       verbose=True, random_state=42):
+    """
+    Perform cross-validation to optimize (lambda, rank) with respect to worst-case objective.
+
+    Args:
+        x_train: Training input data (n_samples, n_features)
+        y_train: Training target data (n_samples, n_targets)
+        lambda_values: List of lambda values to test
+        rank_values: List of rank values to test
+        cv_folds: Number of cross-validation folds
+        objective: Optimization objective ('worst_case', 'mean', 'variance')
+        verbose: Whether to print progress
+        random_state: Random seed for reproducibility
+        
+    Returns:
+        Dictionary with optimization results
+    """
+    import numpy as np
+    from sklearn.model_selection import KFold
+    
+    if lambda_values is None:
+        lambda_values = [0.1, 1.0, 10.0, 100.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0]
+
+    if rank_values is None:
+        rank_values = [5, 10, 15, 20, 25, 30, 50, 100]
+
+    np.random.seed(random_state)
+
+    # we do leave one out validation on the training set    
+    cv_results = {}
+    
+    if verbose:
+        print(f"Cross-validation with {cv_folds} folds for {len(lambda_values)} lambda values...")
+        print(f"Optimization objective: {objective}")
+
+    errors_mean = np.zeros((len(lambda_values), len(rank_values)), dtype=np.float32)
+    errors_q75 = np.zeros((len(lambda_values), len(rank_values)), dtype=np.float32)
+    errors_q90 = np.zeros((len(lambda_values), len(rank_values)), dtype=np.float32)
+    errors_q95 = np.zeros((len(lambda_values), len(rank_values)), dtype=np.float32)
+    errors_worst = np.zeros((len(lambda_values), len(rank_values)), dtype=np.float32)
+
+    for idx_lambda, lambda_reg in enumerate(lambda_values):
+
+        if verbose:
+            print(f"  Testing λ = {lambda_reg}")
+
+
+        fold_mean_trend_nrmse = np.zeros((len(rank_values), len(x_train_dict.keys())), dtype=np.float32)
+        fold_q75_trend_nrmse = np.zeros((len(rank_values), len(x_train_dict.keys())), dtype=np.float32)
+        fold_q90_trend_nrmse = np.zeros((len(rank_values), len(x_train_dict.keys())), dtype=np.float32)
+        fold_q95_trend_nrmse = np.zeros((len(rank_values), len(x_train_dict.keys())), dtype=np.float32)
+        fold_worst_trend_nrmse = np.zeros((len(rank_values), len(x_train_dict.keys())), dtype=np.float32)
+
+        for idx_m, m in enumerate(x_train_dict.keys()):
+
+            # build the training set as the concatenation of all models except the one being validated
+            x_fold_train = np.concatenate([x_train_dict[k] for j, k in enumerate(x_train_dict.keys()) if j != idx_m], axis=0)
+            x_fold_train = torch.from_numpy(x_fold_train.reshape(-1, x_fold_train.shape[-1]))
+            y_fold_train = np.concatenate([y_train_dict[k] for j, k in enumerate(y_train_dict.keys()) if j != idx_m], axis=0)
+            y_fold_train = torch.from_numpy(y_fold_train.reshape(-1, y_fold_train.shape[-1]))
+
+            # build the test set
+            x_fold_test = x_train_dict[m]
+            y_fold_test = y_train_dict[m]
+
+            # Train model
+            w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, verbose=False)
+
+            # Setup low-rank solver for efficient multiple rank solutions
+            print(f"\nSetting up low-rank solver...")
+            lr_solver = LowRankSolver()
+            lr_solver.fit(x_fold_train, y_fold_train, w_fold, verbose=True)
+
+            # Get solutions for multiple ranks efficiently
+            rank_solutions = lr_solver.get_multiple_ranks(rank_values, verbose=True)
+
+            nrmse = np.zeros((len(rank_solutions), x_fold_test.shape[0]), dtype=np.float32)
+
+            # Predict on validation set
+            for idx_r, (r, w) in enumerate(rank_solutions.items()):
+                y_pred_fold = x_fold_test @ w
+
+                # compute the trend for each sample
+                trend_pred = np.zeros((y_pred_fold.shape[0], y_pred_fold.shape[2]))
+                trends_ground_truth = np.zeros((y_pred_fold.shape[0], y_pred_fold.shape[2]))
+                for j in range(y_pred_fold.shape[0]):
+                    trend_pred[j,:] = np.polyfit(np.arange(y_pred_fold.shape[1]), y_pred_fold[j,:,:], 1)[0]
+                    trends_ground_truth[j,:] = np.polyfit(np.arange(y_fold_test.shape[1]), y_fold_test[j,:,:], 1)[0]
+
+
+                # compute the normalized RMSE of the trend
+                nrmse[idx_r, :] = np.sqrt(np.nansum((trend_pred - trends_ground_truth)**2,axis=1))/np.sqrt(np.nansum(trends_ground_truth**2, axis=1))
+
+            fold_mean_trend_nrmse[:,idx_m] = np.mean(nrmse,axis=1)
+            fold_q75_trend_nrmse[:,idx_m] = np.nanquantile(nrmse, 0.75, axis=1)
+            fold_q90_trend_nrmse[:,idx_m] = np.nanquantile(nrmse, 0.90, axis=1)
+            fold_q95_trend_nrmse[:,idx_m] = np.nanquantile(nrmse, 0.95, axis=1)
+            fold_worst_trend_nrmse[:,idx_m] = np.nanmax(nrmse, axis=1)
+
+
+
+        # Aggregate results only for the MEAN over runs
+        errors_mean[idx_lambda,:] = np.mean(fold_mean_trend_nrmse, axis=1)
+        errors_q75[idx_lambda,:] = np.nanquantile(fold_mean_trend_nrmse, 0.75, axis=1)
+        errors_q90[idx_lambda,:] = np.nanquantile(fold_mean_trend_nrmse, 0.90, axis=1)
+        errors_q95[idx_lambda,:] = np.nanquantile(fold_mean_trend_nrmse, 0.95, axis=1)
+        errors_worst[idx_lambda,:] = np.max(fold_mean_trend_nrmse, axis=1)  # Shape: (n_folds, n_spatial_locations)
+
+        
+
+        for idx_r, r in enumerate(rank_values):
+            cv_results[lambda_reg, r] = {
+                'mean_nrmse': errors_mean[idx_lambda, idx_r],
+                'q75_nrmse': errors_q75[idx_lambda, idx_r],
+                'q90_nrmse': errors_q90[idx_lambda, idx_r],
+                'q95_nrmse': errors_q95[idx_lambda, idx_r],
+                'worst_nrmse': errors_worst[idx_lambda, idx_r]
+            }
+        
+            if verbose:
+                print(f"    Mean NRMSE: {cv_results[lambda_reg, r]['mean_nrmse']:.4f}")
+                print(f"   Q75 NRMSE: {cv_results[lambda_reg, r]['q75_nrmse']:.4f}")
+                print(f"   Q90 NRMSE: {cv_results[lambda_reg, r]['q90_nrmse']:.4f}")
+                print(f"   Q95 NRMSE: {cv_results[lambda_reg, r]['q95_nrmse']:.4f}")
+                print(f"    Worst NRMSE: {cv_results[lambda_reg, r]['worst_nrmse']:.4f}")
+                # print(f"    NRMSE Variance: {cv_results[lambda_reg, r]['nrmse_variance']:.4f}")
+    
+    # Select best lambda based on objective
+    if objective == 'worst_case':
+        (best_lambda,best_rank) = min(cv_results.keys(), key=lambda x: cv_results[x]['worst_nrmse'])
+        optimization_metric = 'worst_nrmse'
+    elif objective == 'mean':
+        (best_lambda,best_rank) = min(cv_results.keys(), key=lambda x: cv_results[x]['mean_nrmse'])
+        optimization_metric = 'mean_nrmse'
+    else:
+        raise ValueError(f"Unknown objective: {objective}")
+    
+    if verbose:
+        print(f"\nOptimization complete!")
+        print(f"Best λ = {best_lambda} (optimizing {optimization_metric})")
+        print(f"Best {optimization_metric}: {cv_results[best_lambda, best_rank][optimization_metric]:.4f}")
+
+    return {
+        'best_lambda': best_lambda,
+        'optimization_metric': optimization_metric,
+        'cv_results': cv_results,
+        'lambda_values': lambda_values,
+        'rank_values': rank_values,
         'cv_folds': cv_folds,
         'objective': objective
     }
