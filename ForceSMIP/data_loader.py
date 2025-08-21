@@ -3,12 +3,28 @@ import netCDF4 as netcdf
 import numpy as np
 from typing import Dict, Tuple, List, Optional
 
+VARIABLE_MAP = {
+    'tasmax': ('monmaxtasmax', 'tasmax'),
+    'tasmin': ('monmintasmin', 'tasmin'),
+    'prmax': ('monmaxpr', 'pr'),
+    'zmta': ('zmta', 'ta'),
+    # Add more mappings if needed
+}
+
 class ForceSMIPDataLoader:
     """Class to handle loading and preprocessing of ForceSMIP data."""
     
     def __init__(self, base_path: str):
         self.base_path = base_path
         
+    def _map_variable(self, variable):
+        """Helper to map variable names for file and netCDF variable."""
+        if variable in VARIABLE_MAP:
+            variable_tmp, variable_nc = VARIABLE_MAP[variable]
+        else:
+            variable_tmp, variable_nc = variable, variable
+        return variable_tmp, variable_nc
+    
     def load_training_data(self, variable: str = 'tas') -> Tuple[Dict, Dict, np.ndarray, np.ndarray]:
         """
         Load training data from ForceSMIP dataset.
@@ -22,21 +38,7 @@ class ForceSMIPDataLoader:
             longitude: Longitude coordinates
             latitude: Latitude coordinates
         """
-        variable_tmp = variable
-        if variable == 'tasmax':
-            variable_tmp = 'monmaxtasmax'
-
-        if variable == 'tasmin':
-            variable_tmp = 'monmintasmin'
-
-        if variable == 'prmax':
-            variable_tmp = 'monmaxpr'
-            variable = 'pr'
-
-        if variable == 'zmta':
-            variable_tmp = 'zmta'
-            variable = 'ta'
-
+        variable_tmp, variable_nc = self._map_variable(variable)
 
         # Fix the path construction - add 'ForceSMIP' subdirectory
         path = os.path.join(self.base_path, 'ForceSMIP', f'Training-Ext/Amon/{variable_tmp}')
@@ -66,9 +68,13 @@ class ForceSMIPDataLoader:
             dir_path = os.path.join(path, model_dir)
             file_list = os.listdir(dir_path)
             
-            dic_data[model_dir] = np.zeros((len(file_list), 2652, 72, 144), dtype=np.float32)
-            dic_forced_response[model_dir] = np.zeros((len(file_list), 2652, 72, 144), dtype=np.float32)
-            
+            if variable_tmp != 'zmta':
+                dic_data[model_dir] = np.zeros((len(file_list), 2652, 72, 144), dtype=np.float32)
+                dic_forced_response[model_dir] = np.zeros((len(file_list), 2652, 72, 144), dtype=np.float32)
+            else:
+                dic_data[model_dir] = np.zeros((len(file_list), 2652, 17, 72), dtype=np.float32)
+                dic_forced_response[model_dir] = np.zeros((len(file_list), 2652, 17, 72), dtype=np.float32)
+
             for idx_f, file in enumerate(file_list):
                 print(f'  Processing {idx_f+1}/{len(file_list)}: {file}')
                 file_path = os.path.join(dir_path, file)
@@ -77,10 +83,10 @@ class ForceSMIPDataLoader:
                     time = np.array(nc_file.variables['time'])
                     longitude = np.array(nc_file.variables['lon'])
                     latitude = np.array(nc_file.variables['lat'])
-                    data = np.array(nc_file.variables[variable])
+                    data = np.array(nc_file.variables[variable_nc])
                     
                     # Monthly centering
-                    dic_data[model_dir][idx_f, :, :, :] = data
+                    dic_data[model_dir][idx_f, :, :, :] = data.squeeze()
                     for i in range(12):
                         month_mask = np.arange(time.shape[0]) % 12 == i
                         monthly_mean = np.nanmean(dic_data[model_dir][idx_f, month_mask, :, :], axis=0)
@@ -90,7 +96,7 @@ class ForceSMIPDataLoader:
             dic_forced_response[model_dir][:, :, :, :] = np.nanmean(dic_data[model_dir], axis=0)
             
         return dic_data, dic_forced_response, longitude, latitude
-    
+
     def load_test_data(self, variable: str = 'tas', 
                       test_models: Optional[List[str]] = None) -> np.ndarray:
         """
@@ -106,17 +112,7 @@ class ForceSMIPDataLoader:
         if test_models is None:
             test_models = ['1B', '1D', '1E', '1G', '1J']
 
-        variable_tmp = variable
-        if variable == 'tasmax':
-            variable_tmp = 'monmaxtasmax'
-        
-        if variable == 'tasmin':
-            variable_tmp = 'monmintasmin'
-        
-        if variable == 'prmax':
-            variable_tmp = 'monmaxpr'
-            variable = 'pr'
-
+        variable_tmp, variable_nc = self._map_variable(variable)
 
         # Fix the path construction
         path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/Evaluation-Tier1/')
@@ -125,8 +121,16 @@ class ForceSMIPDataLoader:
             raise FileNotFoundError(f"Test data path not found: {path}")
             
         file_list = os.listdir(path)
+
+
+        if variable != 'zmta':
         
-        data_test = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
+            data_test = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
+        
+        else:
+            data_test = np.zeros((len(test_models), 876, 17, 72), dtype=np.float32)
+
+        
         
         for file in file_list:
             if file.startswith(f'{variable_tmp}_') and file.endswith('.nc'):
@@ -138,9 +142,9 @@ class ForceSMIPDataLoader:
                         file_path = os.path.join(path, file)
                         with netcdf.Dataset(file_path, 'r') as nc_file:
                             time = np.array(nc_file.variables['time'])
-                            data = np.array(nc_file.variables[variable])
-                            data_test[idx_model, :, :, :] = data
-                        
+                            data = np.array(nc_file.variables[variable_nc])
+                            data_test[idx_model, :, :, :] = data.squeeze()
+
                         # Monthly centering
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
@@ -164,16 +168,7 @@ class ForceSMIPDataLoader:
         if test_models is None:
             test_models = ['1B', '1D', '1E', '1G', '1J']
 
-        variable_tmp = variable
-        if variable == 'tasmax':
-            variable_tmp = 'monmaxtasmax'
- 
-        if variable == 'tasmin':
-            variable_tmp = 'monmintasmin'
-
-        if variable == 'prmax':
-            variable_tmp = 'monmaxpr'
-            variable = 'pr'
+        variable_tmp, variable_nc = self._map_variable(variable)
 
         # Fix the path construction
         path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/ensmeans-Tier1')
@@ -183,8 +178,11 @@ class ForceSMIPDataLoader:
             
         file_list = os.listdir(path)
         
-        data_ground_truth = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
-        
+        if variable != 'zmta':
+            data_ground_truth = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
+        else:
+            data_ground_truth = np.zeros((len(test_models), 876, 17, 72), dtype=np.float32)
+
         for file in file_list:
             if f'.{variable_tmp}.' in file:
                 for idx_model, model in enumerate(test_models):
@@ -195,7 +193,7 @@ class ForceSMIPDataLoader:
                         with netcdf.Dataset(file_path, 'r') as nc_file:
                             time = np.array(nc_file.variables['time'])
                             data = np.array(nc_file.variables['arr_EM'])
-                            data_ground_truth[idx_model, :, :, :] = data
+                            data_ground_truth[idx_model, :, :, :] = data.squeeze()
 
                         # Monthly centering
                         for i in range(12):
@@ -224,15 +222,7 @@ class ForceSMIPDataLoader:
         if methods_to_center is None:
             methods_to_center = [8, 9, 14, 24]
 
-        variable_tmp = variable
-        if variable == 'tasmax':
-            variable_tmp = 'monmaxtasmax'
-
-        if variable == 'tasmin':
-            variable_tmp = 'monmintasmin'
-
-        if variable == 'prmax':
-            variable_tmp = 'monmaxpr'
+        variable_tmp, variable_nc = self._map_variable(variable)
 
         # Fix the path construction
         path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/ForceSMIP-estimates-Tier1')
@@ -242,8 +232,11 @@ class ForceSMIPDataLoader:
             
         file_list = os.listdir(path)
         
-        data_estimates = np.zeros((30, len(test_models), 876, 72, 144), dtype=np.float32)
-        
+        if variable != 'zmta':
+            data_estimates = np.zeros((30, len(test_models), 876, 72, 144), dtype=np.float32)
+        else:
+            data_estimates = np.zeros((22, len(test_models), 876, 17, 72), dtype=np.float32)
+
         for file in file_list:
             if file.startswith(f'{variable_tmp}_'):
                 file_path = os.path.join(path, file)
@@ -253,10 +246,13 @@ class ForceSMIPDataLoader:
                     
                     for idx_model, model in enumerate(test_models):
                         if model in file:
-                            data_estimates[:, idx_model, :, :, :] = np.array(nc_file.variables['forced_component'])
+                            data_estimates[:, idx_model, :, :, :] = np.array(nc_file.variables['forced_component']).squeeze()
 
         # Center specific methods
         for idx_m in methods_to_center:
+            if idx_m >= data_estimates.shape[0]:
+                print(f"Method index {idx_m} exceeds data shape, skipping centering.")
+                continue
             print(f'Centering data for method {idx_m}')
             for i in range(12):
                 month_mask = np.arange(data_estimates.shape[2]) % 12 == i
