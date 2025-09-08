@@ -353,10 +353,7 @@ class WeightedRidgeRegression:
             else:
                 w_sample = self.models[first_model]['low_rank']
         else:
-            w_sample = self.models[first_model]['full']
-
-            
-        
+            w_sample = self.models[first_model]['full'] 
         
         for i, model_name in enumerate(model_names):
             if use_low_rank:

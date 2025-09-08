@@ -101,10 +101,10 @@ class ForceSMIPEvaluator:
             metrics = self.evaluate_predictions(pred_trends, true_trends)
             
             comparison[method_name] = {
-                'mean_nrmse': np.sqrt(np.mean(metrics['normalized_rmse']**2)),
-                'mean_pattern_corr': np.sqrt(np.mean(metrics['pattern_correlation']**2)),
-                'worst_nrmse': np.max(metrics['normalized_rmse']),
-                'variance_nrmse': np.var(metrics['normalized_rmse']),
+                'mean_nrmse': np.sqrt(np.nanmean(metrics['normalized_rmse']**2)),
+                'mean_pattern_corr': np.sqrt(np.nanmean(metrics['pattern_correlation']**2)),
+                'worst_nrmse': np.nanmax(metrics['normalized_rmse']),
+                'variance_nrmse': np.nanvar(metrics['normalized_rmse']),
                 'metrics': metrics
             }
             
@@ -181,8 +181,19 @@ def compute_trends_from_data(data: np.ndarray, year_slice: slice = slice(30, Non
     """
     data_subset = data[:, year_slice, :]
     trends = np.zeros((data_subset.shape[0], data_subset.shape[2]), dtype=np.float32)
-    
+
+
+    # check the nans
+    nan_idx_tmp = []
     for i in range(data_subset.shape[0]):
-        trends[i, :] = np.polyfit(np.arange(data_subset.shape[1]), data_subset[i, :, :], 1)[0]
+        nan_idx_tmp = list(set(nan_idx_tmp) | set(np.where(np.isnan(data_subset[i, 0, :]) == True)[0]))
+
+    notnan_idx_tmp = list(set(list(range(data_subset.shape[2]))) - set(nan_idx_tmp))
+
+
+    for i in range(data_subset.shape[0]):
+        trends[i, notnan_idx_tmp] = np.polyfit(np.arange(data_subset.shape[1]), data_subset[i][:, notnan_idx_tmp], 1)[0]
+
+    trends[:,nan_idx_tmp] = np.nan
 
     return trends

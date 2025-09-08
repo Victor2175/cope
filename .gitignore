@@ -9,3 +9,4 @@ results/
 *.mp4
 *.pickle
 *.jpg
+*.npy

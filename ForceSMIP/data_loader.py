@@ -8,6 +8,10 @@ VARIABLE_MAP = {
     'tasmin': ('monmintasmin', 'tasmin'),
     'prmax': ('monmaxpr', 'pr'),
     'zmta': ('zmta', 'ta'),
+    'tas': ('tas', 'tas'),
+    'tos': ('tos', 'tos'),
+    'pr': ('pr', 'pr'),
+    'psl': ('psl', 'psl')
     # Add more mappings if needed
 }
 
@@ -98,6 +102,7 @@ class ForceSMIPDataLoader:
         return dic_data, dic_forced_response, longitude, latitude
 
     def load_test_data(self, variable: str = 'tas', 
+                      tier: str = 'Tier1',
                       test_models: Optional[List[str]] = None) -> np.ndarray:
         """
         Load test data from Evaluation-Tier1.
@@ -115,41 +120,48 @@ class ForceSMIPDataLoader:
         variable_tmp, variable_nc = self._map_variable(variable)
 
         # Fix the path construction
-        path = os.path.join(self.base_path, 'ForceSMIP_Tier1_final/Evaluation-Tier1/')
+        path = os.path.join(self.base_path, f'ForceSMIP/Evaluation-{tier}/')
         
+        # Fix the path construction - add 'ForceSMIP' subdirectory
+        path_tmp = os.path.join(path, f'Amon/{variable_tmp}')
+        
+        if not os.path.exists(path_tmp):
+            path_tmp = os.path.join(path, f'Omon/{variable_tmp}')
+
+        if not os.path.exists(path_tmp):
+            path_tmp = os.path.join(path, f'Aday/{variable_tmp}')
+
         if not os.path.exists(path):
             raise FileNotFoundError(f"Test data path not found: {path}")
-            
-        file_list = os.listdir(path)
 
 
-        if variable != 'zmta':
-        
-            data_test = np.zeros((len(test_models), 876, 72, 144), dtype=np.float32)
-        
-        else:
-            data_test = np.zeros((len(test_models), 876, 17, 72), dtype=np.float32)
+        file_list = os.listdir(path_tmp)
+        print(f"Files in test data directory: {file_list}")
+        # print(variable_tmp)
 
-        
-        
-        for file in file_list:
+        for idx_file, file in enumerate(file_list):
             if file.startswith(f'{variable_tmp}_') and file.endswith('.nc'):
                 for idx_model, model in enumerate(test_models):
                     if model in file:
                         idx_test = test_models.index(model)
                         print(f'Loading test data for {model} at index {idx_test}')
 
-                        file_path = os.path.join(path, file)
+                        file_path = os.path.join(path_tmp, file)
                         with netcdf.Dataset(file_path, 'r') as nc_file:
                             time = np.array(nc_file.variables['time'])
                             data = np.array(nc_file.variables[variable_nc])
-                            data_test[idx_model, :, :, :] = data.squeeze()
+                            if idx_file == 0:
+                                print("create data_test array")
+                                data_test = np.zeros((len(test_models), data.shape[0], data.shape[1], data.shape[2]), dtype=np.float32)
+                                data_test[idx_model, :, :, :] = data.squeeze()
+                            else:
+                                data_test[idx_model, :, :, :] = data.squeeze()
 
                         # Monthly centering
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
                             monthly_mean = np.nanmean(data_test[idx_model, month_mask, :, :], axis=0)
-                            data_test[idx_model, month_mask, :, :] -= monthly_mean
+                            data_test[idx_file, month_mask, :, :] -= monthly_mean
 
         return data_test
     
