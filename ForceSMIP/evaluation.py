@@ -156,16 +156,16 @@ def compute_statistics(data: np.ndarray) -> Dict:
         Dictionary with statistics
     """
     return {
-        'mean': np.mean(data),
-        'median': np.median(data),
-        'std': np.std(data),
-        'min': np.min(data),
-        'max': np.max(data),
-        'q25': np.quantile(data, 0.25),
-        'q75': np.quantile(data, 0.75),
-        'q90': np.quantile(data, 0.90),
-        'q95': np.quantile(data, 0.95),
-        'variance': np.var(data)
+        'mean': np.nanmean(data),
+        'median': np.nanmedian(data),
+        'std': np.nanstd(data),
+        'min': np.nanmin(data),
+        'max': np.nanmax(data),
+        'q25': np.nanquantile(data, 0.25),
+        'q75': np.nanquantile(data, 0.75),
+        'q90': np.nanquantile(data, 0.90),
+        'q95': np.nanquantile(data, 0.95),
+        'variance': np.nanvar(data)
     }
 
 def compute_trends_from_data(data: np.ndarray, year_slice: slice = slice(30, None)) -> np.ndarray:

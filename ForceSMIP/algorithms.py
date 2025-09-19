@@ -3,6 +3,7 @@ import torch
 from typing import Dict, Tuple, List, Optional, Union
 
 def ridge_regression(x: torch.Tensor, y: torch.Tensor, lambda_reg: float, 
+                    surface: Optional[torch.Tensor] = None,
                     verbose: bool = False) -> torch.Tensor:
     """
     Solve ridge regression using closed-form solution.
@@ -11,6 +12,7 @@ def ridge_regression(x: torch.Tensor, y: torch.Tensor, lambda_reg: float,
         x: Input features (n_samples, n_features) or (n_models, n_times, n_features)
         y: Target values (n_samples, n_targets) or (n_models, n_times, n_targets)
         lambda_reg: Regularization parameter
+        surface: Optional surface area weights (latitude, longitude)
         verbose: Whether to print progress
         
     Returns:
@@ -25,15 +27,22 @@ def ridge_regression(x: torch.Tensor, y: torch.Tensor, lambda_reg: float,
         x = x.reshape(-1, x.shape[-1])  # (n_models*n_times, n_features)
     if y.dim() == 3:
         y = y.reshape(-1, y.shape[-1])  # (n_models*n_times, n_targets)
+
     
     if verbose:
         print(f"Reshaped: X={x.shape}, Y={y.shape}")
-    
+
+    # Apply surface weights if provided
+    if surface is not None:
+        S = torch.diag(surface)
+    else:
+        S = torch.eye(x.shape[1], dtype=x.dtype, device=x.device)
+
     # Solve (X^T X + λI)^{-1} X^T Y
     XtX = x.T @ x
     XtY = x.T @ y
     I = torch.eye(XtX.shape[0], dtype=XtX.dtype, device=XtX.device)
-    w = torch.linalg.solve(XtX + lambda_reg * I, XtY)
+    w = torch.linalg.solve(XtX + lambda_reg * S, XtY)
     
     if verbose:
         print(f"Ridge weights computed: {w.shape}")
@@ -53,8 +62,9 @@ class LowRankSolver:
         self.Vt = None
         self.XtY = None
         self.is_fitted = False
-        
-    def fit(self, x: torch.Tensor, y: torch.Tensor, w_full: torch.Tensor, lambda_reg: float = 1.0, 
+
+    def fit(self, x: torch.Tensor, y: torch.Tensor, lambda_reg: float = 1.0,
+            surface: Optional[torch.Tensor] = None,
             verbose: bool = False) -> None:
         """
         Compute and store SVD components for efficient rank-k solutions.
@@ -74,16 +84,26 @@ class LowRankSolver:
             x = x.reshape(-1, x.shape[-1])
         if y.dim() == 3:
             y = y.reshape(-1, y.shape[-1])
+
+        # Apply surface weights if provided
+        if surface is not None:
+            S = torch.diag(surface)
+            S_inv = torch.diag(1.0 / surface)
             
+        else:
+            S = torch.eye(x.shape[1], dtype=x.dtype, device=x.device)
+            S_inv = torch.eye(x.shape[1], dtype=x.dtype, device=x.device)
+
         # save w_full
-        self.W_full = w_full
-        
+        if self.W_full is None:
+            self.W_full = ridge_regression(x @ torch.sqrt(S_inv), y, lambda_reg, surface=surface, verbose=verbose)
+
         # build the concatenation of (X, sqrt{lambda} I_p)
         I_p = torch.eye(x.shape[1], dtype=x.dtype, device=x.device)
-        x_augmented = torch.cat([x, torch.sqrt(torch.tensor(lambda_reg, dtype=x.dtype, device=x.device)) * I_p], dim=0)
+        x_augmented = torch.cat([x @ torch.sqrt(S_inv), torch.sqrt(torch.tensor(lambda_reg, dtype=x.dtype, device=x.device)) * I_p], dim=0)
 
         # Compute SVD of the full solution
-        self.U, self.S, self.Vt = torch.linalg.svd(x_augmented @ w_full, full_matrices=False)
+        self.U, self.S, self.Vt = torch.linalg.svd(x_augmented @ self.W_full, full_matrices=False)
         self.XtY = x.T @ y
         
         if verbose:
@@ -91,8 +111,8 @@ class LowRankSolver:
             print(f"Singular values range: {self.S.min():.6f} to {self.S.max():.6f}")
             
         self.is_fitted = True
-        
-    def get_rank_k_solution(self, rank: int, verbose: bool = False) -> torch.Tensor:
+
+    def get_rank_k_solution(self, rank: int, surface: Optional[torch.Tensor] = None, verbose: bool = False) -> torch.Tensor:
         """
         Get rank-k approximation using precomputed SVD.
         
@@ -113,18 +133,26 @@ class LowRankSolver:
                 
         if verbose:
             print(f"Computing rank-{rank} approximation...")
-            
-        # Reconstruct with only top-k singular values
-        w_k = self.W_full @ self.Vt[:rank, :].T @ self.Vt[:rank, :]
 
-        
+        # Apply surface weights if provided
+        if surface is not None:
+            S = torch.diag(surface)
+            S_inv = torch.diag(1.0 / surface)
+        else:
+            S = torch.eye(self.Vt.shape[0], dtype=self.Vt.dtype, device=self.Vt.device)
+            S_inv = torch.eye(self.Vt.shape[0], dtype=self.Vt.dtype, device=self.Vt.device)
+
+        # Reconstruct with only top-k singular values
+        w_k = torch.sqrt(S_inv) @ self.W_full @ self.Vt[:rank, :].T @ self.Vt[:rank, :]
+
         if verbose:
             print(f"Rank-{rank} solution computed: {w_k.shape}")
             
         return w_k
     
     def get_multiple_ranks(self, ranks: List[int], 
-                          verbose: bool = False) -> Dict[int, torch.Tensor]:
+                           surface: Optional[torch.Tensor] = None,
+                           verbose: bool = False) -> Dict[int, torch.Tensor]:
         """
         Get solutions for multiple ranks efficiently.
         
@@ -146,9 +174,9 @@ class LowRankSolver:
                 if verbose:
                     print(f"Warning: Rank {rank} > max possible {max_rank}, skipping")
                 continue
-                
-            solutions[rank] = self.get_rank_k_solution(rank, verbose=False)
-            
+
+            solutions[rank] = self.get_rank_k_solution(rank, surface=surface, verbose=False)
+
         if verbose:
             print(f"Computed solutions for ranks: {list(solutions.keys())}")
             
@@ -186,6 +214,7 @@ class WeightedRidgeRegression:
     def train_per_model(self, x_dict: Dict[str, torch.Tensor], 
                        y_dict: Dict[str, torch.Tensor],
                        lambda_reg: float, rank: int = 10,
+                       surface: Optional[torch.Tensor] = None,
                        verbose: bool = False) -> Dict[str, Dict]:
         """
         Train ridge regression for each model with low-rank preparation.
@@ -216,15 +245,15 @@ class WeightedRidgeRegression:
                 y_model = y_model.reshape(-1, y_model.shape[-1])
             
             # Train full ridge regression
-            w_full = ridge_regression(x_model, y_model, lambda_reg, verbose=verbose)
+            w_full = ridge_regression(x_model, y_model, lambda_reg,surface=surface, verbose=verbose)
             
             # Setup low-rank solver
             lr_solver = LowRankSolver()
-            lr_solver.fit(x_model, y_model, w_full, verbose=verbose)
-            
+            lr_solver.fit(x_model, y_model, lambda_reg=lambda_reg, surface=surface, verbose=verbose)
+
             # Get primary rank solution
-            w_lr = lr_solver.get_rank_k_solution(rank, verbose=verbose)
-            
+            w_lr = lr_solver.get_rank_k_solution(rank, surface=surface, verbose=verbose)
+
             # Store models and solvers
             self.models[model_name] = {
                 'full': w_full,
@@ -256,7 +285,8 @@ class WeightedRidgeRegression:
         return performance
     
     def get_rank_solutions(self, ranks: List[int], 
-                          verbose: bool = False) -> Dict[str, Dict[int, torch.Tensor]]:
+                           surface: Optional[torch.Tensor] = None,
+                           verbose: bool = False) -> Dict[str, Dict[int, torch.Tensor]]:
         """
         Get solutions for multiple ranks for all models efficiently.
         
@@ -272,8 +302,8 @@ class WeightedRidgeRegression:
         for model_name, solver in self.low_rank_solvers.items():
             if verbose:
                 print(f"Computing multiple ranks for {model_name}...")
-                
-            model_solutions = solver.get_multiple_ranks(ranks, verbose=verbose)
+
+            model_solutions = solver.get_multiple_ranks(ranks, surface=surface, verbose=verbose)
             all_solutions[model_name] = model_solutions
             
         return all_solutions
@@ -487,8 +517,8 @@ def compute_trend(data: np.ndarray, years: slice = slice(30, None)) -> np.ndarra
     return trends
 
 
-def cross_validation_lambda_optimization(x_train_dict, y_train_dict, lambda_values=None, 
-                                       cv_folds=5, objective='worst_case', 
+def cross_validation_lambda_optimization(x_train_dict, y_train_dict, lambda_values=None, surface=None,
+                                       cv_folds=5, objective='worst_case',
                                        verbose=True, random_state=42):
     """
     Perform cross-validation to optimize lambda with respect to worst-case objective.
@@ -497,6 +527,7 @@ def cross_validation_lambda_optimization(x_train_dict, y_train_dict, lambda_valu
         x_train: Training input data (n_samples, n_features)
         y_train: Training target data (n_samples, n_targets)
         lambda_values: List of lambda values to test
+        surface: Surface area weights (n_features,)
         cv_folds: Number of cross-validation folds
         objective: Optimization objective ('worst_case', 'mean', 'variance')
         verbose: Whether to print progress
@@ -551,8 +582,8 @@ def cross_validation_lambda_optimization(x_train_dict, y_train_dict, lambda_valu
             y_fold_test = y_train_dict[m]
 
             # Train model
-            w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, verbose=False)
-            
+            w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, surface=surface, verbose=False)
+
             # Predict on validation set
             y_pred_fold = x_fold_test @ w_fold
             
@@ -632,7 +663,7 @@ def cross_validation_lambda_optimization(x_train_dict, y_train_dict, lambda_valu
 
 
 
-def cross_validation_lambda_rank_optimization(x_train_dict, y_train_dict, lambda_values=None, rank_values=None,
+def cross_validation_lambda_rank_optimization(x_train_dict, y_train_dict, lambda_values=None, rank_values=None, surface=None,
                                        cv_folds=5, objective='worst_case', 
                                        verbose=True, random_state=42):
     """
@@ -700,12 +731,12 @@ def cross_validation_lambda_rank_optimization(x_train_dict, y_train_dict, lambda
             y_fold_test = y_train_dict[m]
 
             # Train model
-            w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, verbose=False)
+            # w_fold = ridge_regression(x_fold_train, y_fold_train, lambda_reg, verbose=False)
 
             # Setup low-rank solver for efficient multiple rank solutions
             print(f"\nSetting up low-rank solver...")
             lr_solver = LowRankSolver()
-            lr_solver.fit(x_fold_train, y_fold_train, w_fold, verbose=True)
+            lr_solver.fit(x_fold_train, y_fold_train, lambda_reg=lambda_reg, surface=surface, verbose=True)
 
             # Get solutions for multiple ranks efficiently
             rank_solutions = lr_solver.get_multiple_ranks(rank_values, verbose=True)
@@ -778,6 +809,7 @@ def cross_validation_lambda_rank_optimization(x_train_dict, y_train_dict, lambda
 
     return {
         'best_lambda': best_lambda,
+        'best_rank': best_rank,
         'optimization_metric': optimization_metric,
         'cv_results': cv_results,
         'lambda_values': lambda_values,

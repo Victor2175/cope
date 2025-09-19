@@ -88,17 +88,23 @@ class ForceSMIPDataLoader:
                     longitude = np.array(nc_file.variables['lon'])
                     latitude = np.array(nc_file.variables['lat'])
                     data = np.array(nc_file.variables[variable_nc])
-                    
+
+
                     # Monthly centering
                     dic_data[model_dir][idx_f, :, :, :] = data.squeeze()
+                    data_tmp = data.copy()
+                    data_tmp[np.abs(data_tmp) > 1e9] = np.nan  #
+
                     for i in range(12):
                         month_mask = np.arange(time.shape[0]) % 12 == i
-                        monthly_mean = np.nanmean(dic_data[model_dir][idx_f, month_mask, :, :], axis=0)
+                        # monthly_mean = np.nanmean(dic_data[model_dir][idx_f, month_mask, :, :], axis=0)
+                        
+                        monthly_mean = np.nanmean(data_tmp[month_mask, :, :], axis=0).squeeze()
                         dic_data[model_dir][idx_f, month_mask, :, :] -= monthly_mean
-            
+                    
             # Compute forced response as ensemble mean
-            dic_forced_response[model_dir][:, :, :, :] = np.nanmean(dic_data[model_dir], axis=0)
-            
+            dic_forced_response[model_dir][:,:,:,:] = np.nanmean(dic_data[model_dir], axis=0)
+
         return dic_data, dic_forced_response, longitude, latitude
 
     def load_test_data(self, variable: str = 'tas', 
@@ -137,7 +143,8 @@ class ForceSMIPDataLoader:
 
         file_list = os.listdir(path_tmp)
         print(f"Files in test data directory: {file_list}")
-        # print(variable_tmp)
+
+        start = 1
 
         for idx_file, file in enumerate(file_list):
             if file.startswith(f'{variable_tmp}_') and file.endswith('.nc'):
@@ -150,19 +157,24 @@ class ForceSMIPDataLoader:
                         with netcdf.Dataset(file_path, 'r') as nc_file:
                             time = np.array(nc_file.variables['time'])
                             data = np.array(nc_file.variables[variable_nc])
-                            if idx_file == 0:
+                            if start == 1:
+                                start = 0
                                 print("create data_test array")
                                 data_test = np.zeros((len(test_models), data.shape[0], data.shape[1], data.shape[2]), dtype=np.float32)
                                 data_test[idx_model, :, :, :] = data.squeeze()
                             else:
                                 data_test[idx_model, :, :, :] = data.squeeze()
 
+                        data_tmp = data_test[idx_model, :, :, :].copy()
+                        data_tmp[np.abs(data_tmp) > 1e9] = np.nan
+
+                        print("Monthly centering")
                         # Monthly centering
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
-                            monthly_mean = np.nanmean(data_test[idx_model, month_mask, :, :], axis=0)
-                            data_test[idx_file, month_mask, :, :] -= monthly_mean
-
+                            monthly_mean = np.nanmean(data_tmp[month_mask, :, :], axis=0).squeeze()
+                            # monthly_mean = np.nanmean(data_test[idx_model, :, :, :], axis=0).squeeze()
+                            data_test[idx_model, month_mask, :, :] -= monthly_mean
         return data_test
     
     def load_ground_truth(self, variable: str = 'tas',
@@ -205,14 +217,19 @@ class ForceSMIPDataLoader:
                         with netcdf.Dataset(file_path, 'r') as nc_file:
                             time = np.array(nc_file.variables['time'])
                             data = np.array(nc_file.variables['arr_EM'])
+
                             data_ground_truth[idx_model, :, :, :] = data.squeeze()
+                            
+
+                        data_tmp = data_ground_truth[idx_model, :, :, :].copy()
+                        data_tmp[np.abs(data_tmp) > 1e9] = np.nan
 
                         # Monthly centering
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
-                            monthly_mean = np.nanmean(data_ground_truth[idx_model, month_mask, :, :], axis=0)
+                            # monthly_mean = np.nanmean(data_ground_truth[idx_model, month_mask, :, :], axis=0).squeeze()
+                            monthly_mean = np.nanmean(data_tmp[month_mask, :, :], axis=0).squeeze()
                             data_ground_truth[idx_model, month_mask, :, :] -= monthly_mean
-                            
         return data_ground_truth
     
     def load_estimates(self, variable: str = 'tas',
@@ -286,7 +303,7 @@ def yearly_average(data: np.ndarray, months_per_year: int = 12) -> np.ndarray:
     """
     n_years = data.shape[1] // months_per_year
     data_reshaped = data.reshape(data.shape[0], n_years, months_per_year, *data.shape[2:])
-    return data_reshaped.mean(axis=2)
+    return np.nanmean(data_reshaped, axis=2)
 
 def compute_yearly_average_dict(data_dict: Dict, months_per_year: int = 12) -> Dict:
     """
