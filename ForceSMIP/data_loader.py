@@ -92,6 +92,7 @@ class ForceSMIPDataLoader:
 
                     # Monthly centering
                     dic_data[model_dir][idx_f, :, :, :] = data.squeeze()
+
                     data_tmp = data.copy()
                     data_tmp[np.abs(data_tmp) > 1e9] = np.nan  #
 
@@ -161,6 +162,7 @@ class ForceSMIPDataLoader:
                                 start = 0
                                 print("create data_test array")
                                 data_test = np.zeros((len(test_models), data.shape[0], data.shape[1], data.shape[2]), dtype=np.float32)
+                                temporal_means = np.zeros((len(test_models), data.shape[0], data.shape[1], data.shape[2]), dtype=np.float32)
                                 data_test[idx_model, :, :, :] = data.squeeze()
                             else:
                                 data_test[idx_model, :, :, :] = data.squeeze()
@@ -173,9 +175,10 @@ class ForceSMIPDataLoader:
                         for i in range(12):
                             month_mask = np.arange(time.shape[0]) % 12 == i
                             monthly_mean = np.nanmean(data_tmp[month_mask, :, :], axis=0).squeeze()
+                            temporal_means[idx_model, month_mask, :, :] = monthly_mean
                             # monthly_mean = np.nanmean(data_test[idx_model, :, :, :], axis=0).squeeze()
                             data_test[idx_model, month_mask, :, :] -= monthly_mean
-        return data_test
+        return data_test, temporal_means
     
     def load_ground_truth(self, variable: str = 'tas',
                          test_models: Optional[List[str]] = None) -> np.ndarray:
