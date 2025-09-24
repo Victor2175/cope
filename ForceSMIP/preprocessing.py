@@ -522,6 +522,41 @@ def filter_training_data_by_indices(x_train_merged: torch.Tensor,
     
     return x_train_filtered, y_train_filtered
 
+
+def capture_nans(x_train_dict):
+    """
+    Capture indices of NaN values across all training data.
+    Args:
+        x_train_dict (dict): Dictionary of training data tensors with keys as model names.
+    Returns:
+        nan_union (list): List of indices where NaN values are found across all models.
+        notnan_inter (list): List of indices where no NaN values are found across all models.
+    """
+    
+    # enumerate in the dictionary and get the union of the nans for each pair ((key, value))
+    for (key, value) in x_train_dict.items():
+        # nan_indices = list(torch.where(torch.abs(value[0,:,:]) > 1e9)[0].numpy())
+
+        # new code to test 
+        # get nan mask of test set 
+        nan_mask = np.where(np.abs(value[0,:,:])>1e10, True, False)
+
+        if nan_mask.any() == False:
+            nan_mask = np.where(np.isnan(value[0,:,:])==True, True, False)
+
+        # get the index of columns where there is at least one True in the nan mask
+        col_indices = np.where(np.any(nan_mask, axis=0))[0]
+
+        if 'nan_union' not in locals():
+            nan_union = col_indices
+        else:
+            nan_union = list(set(nan_union) | set(col_indices))
+
+    notnan_inter = list(set(range(value.shape[2])) - set(nan_union))
+
+    return nan_union, notnan_inter
+
+
 def filter_training_dict_by_indices(x_train_dict: Dict[str, torch.Tensor],
                                    y_train_dict: Dict[str, torch.Tensor],
                                    valid_indices: List[int],
