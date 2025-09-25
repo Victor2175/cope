@@ -3,6 +3,15 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+# import argparse
+
+# parser = argparse.ArgumentParser(description="Run ForceSMIP Tier2 analysis")
+# parser.add_argument('--variable', type=str, default='psl', help='Variable name (e.g., psl, tas, pr, tos)')
+# # parser.add_argument('--lambda', type=float, default=1000.0, help='Ridge regularization parameter')
+# parser.add_argument('--rank', type=int, default=10, help='Low-rank value')
+# args = parser.parse_args()
+
+# print(args.variable, args.rank)
 
 # Add src to path
 sys.path.append(os.path.join(os.getcwd(), "ForceSMIP"))
@@ -119,8 +128,9 @@ notnan_idx_test = list(set(list(range(x_test.shape[2]))) - set(nan_idx_test))
     
 
 # # replace the nan index by Nans
-notnan_idx = notnan_idx_test
-nan_idx = nan_idx_test
+if variable != 'tas':
+    notnan_idx = notnan_idx_test
+    nan_idx = nan_idx_test
 
 
 ################################## Transform the data and keep only the not nan indices ##################################
@@ -131,6 +141,10 @@ x_train_dict_filtered, y_train_dict_filtered, x_test_filtered = apply_notnan_fil
     x_train_dict, y_train_dict,
     x_test, notnan_idx
 )
+
+####### If it is tas variabe, then set the values > 1e9 to 0.0 ######
+if variable == 'tas':
+    x_test_filtered[np.abs(x_test_filtered)>1e9] = 0.0
 
 ################################### Add some smoothing on the test data ####################################################
 x_test_smooth = moving_average_smoothing(x_test_filtered, window_size=12*30, mode='same')
@@ -151,8 +165,8 @@ from algorithms import cross_validation_lambda_optimization, cross_validation_la
 lambda_values_cv = [10.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
 rank_values_cv = [2, 5, 10, 20, 30, 50, 100]
 
-lambda_values_cv = [1000.0]
-rank_values_cv = [10]
+# lambda_values_cv = [1000.0]
+# rank_values_cv = [10]
 
 
 print("Performing cross-validation to optimize lambda for worst-case performance...")
