@@ -5,14 +5,6 @@ import torch
 import matplotlib.pyplot as plt
 # import argparse
 
-# parser = argparse.ArgumentParser(description="Run ForceSMIP Tier2 analysis")
-# parser.add_argument('--variable', type=str, default='psl', help='Variable name (e.g., psl, tas, pr, tos)')
-# # parser.add_argument('--lambda', type=float, default=1000.0, help='Ridge regularization parameter')
-# parser.add_argument('--rank', type=int, default=10, help='Low-rank value')
-# args = parser.parse_args()
-
-# print(args.variable, args.rank)
-
 # Add src to path
 sys.path.append(os.path.join(os.getcwd(), "ForceSMIP"))
 
@@ -39,7 +31,7 @@ print("Modules loaded successfully!")
 base_path = '/net/krypton/climdyn_nobackup/FTP'
 
 # variable names: pr, psl, tas, tos
-variable = 'pr'  # Temperature at 2m
+variable = 'tas'  # Temperature at 2m
 
 pipeline = ForceSMIPPipeline(base_path, variable=variable)
 print(f"Pipeline initialized for variable: {variable}")
@@ -62,10 +54,10 @@ print(f"  Time steps: {list(dic_data.values())[0].shape[1]}")
 
 
 # Load test data
-test_models = ['2A', '2B', '2C', '2D', '2E', '2F', '2G', '2H', '2I', '2J', '2K', '2L', '2M', '2N', '2O', '2P', '2Q', '2R', '2S', '2T', '2U']
+test_models = ['1A', '1B', '1C', '1D', '1E', '1F', '1G', '1H', '1J']
 print("\nLoading test data...")
 
-data_test, temporal_means = data_loader.load_test_data(variable, tier='Tier2', test_models=test_models)
+data_test, temporal_means = data_loader.load_test_data(variable, tier='Tier1', test_models=test_models)
 
 
 ############ compute yearly averages ############
@@ -165,8 +157,8 @@ from algorithms import cross_validation_lambda_optimization, cross_validation_la
 lambda_values_cv = [10.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
 rank_values_cv = [2, 5, 10, 20, 30, 50, 100]
 
-# lambda_values_cv = [1000.0]
-# rank_values_cv = [10]
+lambda_values_cv = [1000.0]
+rank_values_cv = [10]
 
 
 print("Performing cross-validation to optimize lambda for worst-case performance...")
@@ -280,9 +272,9 @@ y_pred_ridge_lr_smooth_xr.to_dataset(name='prediction')
 
 
 # save it as a netcdf file
-path_tier2 = '/home/vcohen/cope/results/tier2/'
+path_tier1 = '/home/vcohen/cope/results/tier1/'
 
-y_pred_ridge_xr.to_netcdf(f'{path_tier2}predictions_{variable}_ridge_tier2.nc')
-y_pred_ridge_lr_xr.to_netcdf(f'{path_tier2}predictions_{variable}_ridge_lr_tier2.nc')
-y_pred_ridge_smooth_xr.to_netcdf(f'{path_tier2}predictions_{variable}_ridge_smooth_tier2.nc')
-y_pred_ridge_lr_smooth_xr.to_netcdf(f'{path_tier2}predictions_{variable}_ridge_lr_smooth_tier2.nc')
+y_pred_ridge_xr.to_netcdf(f'{path_tier1}predictions_{variable}_ridge_tier1.nc')
+y_pred_ridge_lr_xr.to_netcdf(f'{path_tier1}predictions_{variable}_ridge_lr_tier1.nc')
+y_pred_ridge_smooth_xr.to_netcdf(f'{path_tier1}predictions_{variable}_ridge_smooth_tier1.nc')
+y_pred_ridge_lr_smooth_xr.to_netcdf(f'{path_tier1}predictions_{variable}_ridge_lr_smooth_tier1.nc')

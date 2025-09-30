@@ -115,22 +115,23 @@ class LowRankSolver:
     def get_rank_k_solution(self, rank: int, surface: Optional[torch.Tensor] = None, verbose: bool = False) -> torch.Tensor:
         """
         Get rank-k approximation using precomputed SVD.
-        
+
         Args:
             rank: Desired rank
+            surface: Optional surface weights
             verbose: Whether to print progress
-            
+
         Returns:
             w_k: Rank-k approximated weights
         """
         if not self.is_fitted:
             raise ValueError("Must call fit() before getting solutions")
-            
+
         if rank > min(self.U.shape[1], self.Vt.shape[0]):
             rank = min(self.U.shape[1], self.Vt.shape[0])
             if verbose:
                 print(f"Rank reduced to maximum possible: {rank}")
-                
+
         if verbose:
             print(f"Computing rank-{rank} approximation...")
 
@@ -142,12 +143,16 @@ class LowRankSolver:
             S = torch.eye(self.Vt.shape[0], dtype=self.Vt.dtype, device=self.Vt.device)
             S_inv = torch.eye(self.Vt.shape[0], dtype=self.Vt.dtype, device=self.Vt.device)
 
-        # Reconstruct with only top-k singular values
-        w_k = torch.sqrt(S_inv) @ self.W_full @ self.Vt[:rank, :].T @ self.Vt[:rank, :]
+        # Compute the rank-k weight matrix using SVD components.
+        # - S_inv: Inverse of surface weights (or identity)
+        # - self.W_full: Full ridge regression weights
+        # - self.Vt[:rank, :]: Top-k right singular vectors
+        # The multiplication projects the weights onto the top-k singular vectors for low-rank approximation.
+        w_k = torch.sqrt(S_inv) @ self.W_full @ self.Vt[:rank, :].T @ self.Vt[:rank, :]  # <-- COMMENTED LINE
 
         if verbose:
             print(f"Rank-{rank} solution computed: {w_k.shape}")
-            
+
         return w_k
     
     def get_multiple_ranks(self, ranks: List[int], 
