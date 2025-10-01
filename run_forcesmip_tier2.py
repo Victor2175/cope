@@ -3,15 +3,8 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-# import argparse
 
-# parser = argparse.ArgumentParser(description="Run ForceSMIP Tier2 analysis")
-# parser.add_argument('--variable', type=str, default='psl', help='Variable name (e.g., psl, tas, pr, tos)')
-# # parser.add_argument('--lambda', type=float, default=1000.0, help='Ridge regularization parameter')
-# parser.add_argument('--rank', type=int, default=10, help='Low-rank value')
-# args = parser.parse_args()
 
-# print(args.variable, args.rank)
 
 # Add src to path
 sys.path.append(os.path.join(os.getcwd(), "ForceSMIP"))

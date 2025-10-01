@@ -291,33 +291,3 @@ class ForceSMIPDataLoader:
 
         return data_estimates
 
-def yearly_average(data: np.ndarray, months_per_year: int = 12) -> np.ndarray:
-    """
-    Compute yearly average of time series data.
-
-    Args:
-        data: Input data array with time dimension
-        months_per_year: Number of months per year
-
-    Returns:
-        Yearly averaged data
-    """
-    n_years = data.shape[1] // months_per_year
-    data_reshaped = data.reshape(data.shape[0], n_years, months_per_year, *data.shape[2:])
-    return np.nanmean(data_reshaped, axis=2)
-
-def compute_yearly_average_dict(data_dict: Dict, months_per_year: int = 12) -> Dict:
-    """
-    Compute yearly average for dictionary of data arrays.
-
-    Args:
-        data_dict: Dictionary of data arrays
-        months_per_year: Number of months per year
-
-    Returns:
-        Dictionary with yearly averaged data
-    """
-    yearly_data = {}
-    for key, data in data_dict.items():
-        yearly_data[key] = yearly_average(data, months_per_year)
-    return yearly_data

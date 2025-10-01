@@ -8,6 +8,40 @@ import torch.nn.functional as F
 from typing import Dict, Tuple, List
 
 
+def yearly_average(x: np.ndarray) -> np.ndarray:
+    """
+    Compute yearly averages from monthly data without dropping spatial dims.
+
+    Accepted shapes:
+      (n_samples, n_months, lat, lon)
+      (n_samples, n_months, spatial)  -> returns (n_samples, n_years, spatial)
+    """
+    if x.ndim == 4:
+        n_samples, n_months, lat, lon = x.shape
+        n_years = n_months // 12
+        if n_years == 0:
+            raise ValueError(f"Not enough months ({n_months}) for yearly averaging.")
+        trimmed = x[:, : n_years * 12]
+        return trimmed.reshape(n_samples, n_years, 12, lat, lon).mean(axis=2)
+    elif x.ndim == 3:
+        n_samples, n_months, spatial = x.shape
+        n_years = n_months // 12
+        if n_years == 0:
+            raise ValueError(f"Not enough months ({n_months}) for yearly averaging.")
+        trimmed = x[:, : n_years * 12]
+        return trimmed.reshape(n_samples, n_years, 12, spatial).mean(axis=2)
+    else:
+        raise ValueError(f"Unsupported shape for yearly_average: {x.shape}")
+
+# Deprecated shim (was removed internally)
+def compute_yearly_average_dict(dic):
+    """
+    Deprecated: replace with {k: yearly_average(v) for k, v in dic.items()}.
+    Provided only for backward compatibility with older code / tests.
+    """
+    return {k: yearly_average(v) for k, v in dic.items()}
+
+
 def data_processing(data,longitude,latitude,max_models = 15):
     """ Process the data: statically relevant climate models (nb_runs > 3),
                             upscaling (from 0.25 to 0.5), 
@@ -342,30 +376,43 @@ def reshape_training_data(x_dict: Dict, y_dict: Dict,
                          dtype: torch.dtype = torch.float32) -> Tuple[Dict, Dict]:
     """
     Reshape training data while keeping model separation.
-    
-    Args:
-        x_dict: Dictionary of input data
-        y_dict: Dictionary of target data
-        dtype: PyTorch data type
-        
-    Returns:
-        x_train_dict: Dictionary of reshaped input tensors
-        y_train_dict: Dictionary of reshaped target tensors
+
+    Handles inputs with shapes:
+      X/Y: (runs, years, lat, lon)
+      X/Y: (runs, years, spatial)
     """
     x_train_dict = {}
     y_train_dict = {}
-    
+
     for model in x_dict.keys():
         x_data = x_dict[model]
         y_data = y_dict[model]
-        
-        x_train_dict[model] = torch.from_numpy(x_data).to(dtype).reshape(
-            x_data.shape[0], x_data.shape[1], -1
-        )
-        y_train_dict[model] = torch.from_numpy(y_data).to(dtype).reshape(
-            y_data.shape[0], y_data.shape[1], -1
-        )
-        
+
+
+        # Enforce expected dims
+        if x_data.ndim == 4:  # (runs, years, lat, lon)
+            xr = torch.from_numpy(x_data).to(dtype)
+            yr = torch.from_numpy(y_data).to(dtype)
+            xr = xr.view(x_data.shape[0], x_data.shape[1], -1)
+            yr = yr.view(y_data.shape[0], y_data.shape[1], -1)
+        elif x_data.ndim == 3:  # (runs, years, spatial)
+            xr = torch.from_numpy(x_data).to(dtype)
+            yr = torch.from_numpy(y_data).to(dtype)
+        else:
+            raise ValueError(f"Model {model}: unsupported x_data shape {x_data.shape}")
+
+        if xr.shape[:2] != yr.shape[:2]:
+            raise ValueError(
+                f"Model {model}: mismatch in (runs, years) dims X {xr.shape[:2]} vs Y {yr.shape[:2]}"
+            )
+
+        if yr.shape[2] == 1 and xr.shape[2] > 1:
+            # Broadcast singleton target feature across spatial dimension if intended
+            yr = yr.expand(yr.shape[0], yr.shape[1], xr.shape[2])
+
+        x_train_dict[model] = xr
+        y_train_dict[model] = yr
+
     return x_train_dict, y_train_dict
 
 def stack_models_and_runs(model_list: List[str], x_dict: Dict, y_dict: Dict,
@@ -584,7 +631,8 @@ def filter_training_dict_by_indices(x_train_dict: Dict[str, torch.Tensor],
         # Filter input data (shape: n_samples, n_time, n_spatial)
         x_train_filtered[model_name] = x_train_dict[model_name][:, :, valid_indices]
         
-        # Filter target data
+        # Filter target data (shape: n_samples, n_time, n_spatial)
+        print(y_train_dict[model_name].shape)
         y_train_filtered[model_name] = y_train_dict[model_name][:, :, valid_indices]
         
         if verbose:

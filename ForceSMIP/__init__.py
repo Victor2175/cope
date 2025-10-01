@@ -1,35 +1,56 @@
 """
-ForceSMIP Challenge Analysis Package
+ForceSMIP package initialization.
 
-This package provides a complete pipeline for analyzing the ForceSMIP challenge data,
-including data loading, preprocessing, model training, evaluation, and visualization.
+Exports core API symbols. Some legacy names are kept as shims for backward
+compatibility (e.g., compute_yearly_average_dict) and may be removed later.
 """
 
-from data_loader import ForceSMIPDataLoader, yearly_average, compute_yearly_average_dict
-from preprocessing import (merge_training_data, reshape_training_data, stack_models_and_runs,
-                           moving_average_smoothing, exponential_smoothing, gaussian_smoothing)
-from algorithms import ridge_regression, low_rank_approximation, WeightedRidgeRegression, compute_trend
-from evaluation import ForceSMIPEvaluator, compute_statistics, compute_trends_from_data
-from visualization import ForceSMIPVisualizer
-from forcesmip_pipeline import ForceSMIPPipeline
+from .data_loader import ForceSMIPDataLoader
+from .preprocessing import (
+    yearly_average,
+    merge_training_data,
+    reshape_training_data,
+    capture_nans,
+    apply_notnan_filter_complete,
+    moving_average_smoothing,
+    compute_yearly_average_dict
+)
+from .algorithms import (
+    ridge_regression,
+    LowRankSolver,
+    WeightedRidgeRegression,   # added for tests
+)
+from .evaluation import (
+    ForceSMIPEvaluator,
+    compute_trends_from_data,
+    compute_statistics,
+)
+from .visualization import ForceSMIPVisualizer   # added for tests
+from .forcesmip_pipeline import ForceSMIPPipeline, PipelineResult
+
 
 __all__ = [
-    'ForceSMIPDataLoader', 
-    'ForceSMIPPipeline',
-    'ForceSMIPEvaluator',
-    'ForceSMIPVisualizer',
-    'WeightedRidgeRegression',
-    'yearly_average',
-    'compute_yearly_average_dict',
-    'merge_training_data',
-    'reshape_training_data',
-    'stack_models_and_runs',
-    'moving_average_smoothing',
-    'exponential_smoothing', 
-    'gaussian_smoothing',
-    'ridge_regression',
-    'low_rank_approximation',
-    'compute_trend',
-    'compute_statistics',
-    'compute_trends_from_data'
+    # Core data & preprocessing
+    "ForceSMIPDataLoader",
+    "yearly_average",
+    "merge_training_data",
+    "reshape_training_data",
+    "capture_nans",
+    "apply_notnan_filter_complete",
+    "moving_average_smoothing",
+    # Algorithms
+    "ridge_regression",
+    "LowRankSolver",
+    "WeightedRidgeRegression",
+    # Evaluation / metrics
+    "ForceSMIPEvaluator",
+    "compute_trends_from_data",
+    "compute_statistics",
+    # Visualization
+    "ForceSMIPVisualizer",
+    # Pipeline
+    "ForceSMIPPipeline",
+    "PipelineResult",
+    # Deprecated shim
+    "compute_yearly_average_dict",
 ]

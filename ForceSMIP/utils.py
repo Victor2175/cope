@@ -31,3 +31,8 @@ def to_xarray(data, model_names, longitude, latitude):
     
     return data_xr, lon_xr, lat_xr
 
+
+def index_to_latlon(idx, longitude, latitude):
+    lat_idx = idx // longitude.shape[0]
+    lon_idx = idx %  longitude.shape[0]
+    return lat_idx, lon_idx
