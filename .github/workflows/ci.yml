@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: [ "3.10" ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install system libs (cartopy deps)
+        run: |
+            sudo apt-get update
+            sudo apt-get install -y libproj-dev proj-data proj-bin libgeos-dev
+
+      - name: Install dependencies
+        run: |
+            pip install --upgrade pip
+            pip install -r requirements.txt
+            pip install pytest nbconvert jupyter pytest-cov
+
+      - name: Run tests
+        run: |
+            pytest -q
+
+      - name: Run notebook (if present)
+        run: |
+            if [ -f forcesmip6_tas_refactored.ipynb ]; then
+              jupyter nbconvert --to notebook --execute forcesmip6_tas_refactored.ipynb \
+                --ExecutePreprocessor.timeout=1800 \
+                --output executed_forcesmip6_tas_refactored.ipynb
+            fi
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+            mkdir -p artifacts
+            [ -f executed_forcesmip6_tas_refactored.ipynb ] && cp executed_forcesmip6_tas_refactored.ipynb artifacts/
+            [ -f results/trend_rmse_results.csv ] && cp results/trend_rmse_results.csv artifacts/ || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: artifacts
