@@ -587,9 +587,11 @@ def capture_nans(x_train_dict):
         # new code to test 
         # get nan mask of test set 
         nan_mask = np.where(np.abs(value[0,:,:])>1e10, True, False)
-
+        print(nan_mask.any())
         if nan_mask.any() == False:
-            nan_mask = np.where(np.isnan(value[0,:,:])==True, True, False)
+
+            nan_mask = np.where(np.isnan(value[0])==True, True, False)
+            print(nan_mask)
 
         # get the index of columns where there is at least one True in the nan mask
         col_indices = np.where(np.any(nan_mask, axis=0))[0]
