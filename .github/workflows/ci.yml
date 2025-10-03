@@ -2,16 +2,9 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - cope_iac_dev
-      - '**'          # (optional) remove if you want only explicit branches
+    branches: [ cope_iac_dev ]
   pull_request:
-    branches:
-      - main
-      - master
-      - cope_iac_dev
+    branches: [ cope_iac_dev ]
   workflow_dispatch:
 
 jobs:
