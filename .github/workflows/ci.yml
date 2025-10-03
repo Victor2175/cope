@@ -2,8 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
+      - cope_iac_dev
+      - '**'          # (optional) remove if you want only explicit branches
   pull_request:
+    branches:
+      - main
+      - master
+      - cope_iac_dev
   workflow_dispatch:
 
 jobs:
@@ -23,33 +31,33 @@ jobs:
 
       - name: Install system libs (cartopy deps)
         run: |
-            sudo apt-get update
-            sudo apt-get install -y libproj-dev proj-data proj-bin libgeos-dev
+          sudo apt-get update
+          sudo apt-get install -y libproj-dev proj-data proj-bin libgeos-dev
 
       - name: Install dependencies
         run: |
-            pip install --upgrade pip
-            pip install -r requirements.txt
-            pip install pytest nbconvert jupyter pytest-cov
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest nbconvert jupyter pytest-cov
 
       - name: Run tests
         run: |
-            pytest -q
+          pytest -q
 
       - name: Run notebook (if present)
         run: |
-            if [ -f forcesmip6_tas_refactored.ipynb ]; then
-              jupyter nbconvert --to notebook --execute forcesmip6_tas_refactored.ipynb \
-                --ExecutePreprocessor.timeout=1800 \
-                --output executed_forcesmip6_tas_refactored.ipynb
-            fi
+          if [ -f forcesmip6_tas_refactored.ipynb ]; then
+            jupyter nbconvert --to notebook --execute forcesmip6_tas_refactored.ipynb \
+              --ExecutePreprocessor.timeout=1800 \
+              --output executed_forcesmip6_tas_refactored.ipynb
+          fi
 
       - name: Collect artifacts
         if: always()
         run: |
-            mkdir -p artifacts
-            [ -f executed_forcesmip6_tas_refactored.ipynb ] && cp executed_forcesmip6_tas_refactored.ipynb artifacts/
-            [ -f results/trend_rmse_results.csv ] && cp results/trend_rmse_results.csv artifacts/ || true
+          mkdir -p artifacts
+          [ -f executed_forcesmip6_tas_refactored.ipynb ] && cp executed_forcesmip6_tas_refactored.ipynb artifacts/
+          [ -f results/trend_rmse_results.csv ] && cp results/trend_rmse_results.csv artifacts/ || true
 
       - name: Upload artifacts
         if: always()
