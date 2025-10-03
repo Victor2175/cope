@@ -9,3 +9,4 @@ pytest
 jupyter
 nbconvert
 netCDF4
+scikit-image
