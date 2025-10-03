@@ -8,3 +8,4 @@ cartopy
 pytest
 jupyter
 nbconvert
+netCDF4
