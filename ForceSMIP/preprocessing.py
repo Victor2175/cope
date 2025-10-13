@@ -124,9 +124,7 @@ def compute_anomalies_and_scalers(data, lon_size, lat_size, nan_idx, time_period
 
         # compute the mean  ########
         means[m] = np.zeros_like(data_reshaped[m])
-        # means[m] = np.nanmean(data_reshaped[m],axis=(0))
-        # means[m] = np.expand_dims(means[m],axis=(0))
-        # means[m] = np.repeat(means[m], data_reshaped[m].shape[0], axis=0)
+
 
         # compute the variance
         vars[m] = np.nanvar(data_reshaped[m],axis=(0))
@@ -582,16 +580,13 @@ def capture_nans(x_train_dict):
     
     # enumerate in the dictionary and get the union of the nans for each pair ((key, value))
     for (key, value) in x_train_dict.items():
-        # nan_indices = list(torch.where(torch.abs(value[0,:,:]) > 1e9)[0].numpy())
 
-        # new code to test 
         # get nan mask of test set 
         nan_mask = np.where(np.abs(value[0,:,:])>1e10, True, False)
-        print(nan_mask.any())
-        if nan_mask.any() == False:
 
+        if nan_mask.any() == False:
             nan_mask = np.where(np.isnan(value[0])==True, True, False)
-            print(nan_mask)
+
 
         # get the index of columns where there is at least one True in the nan mask
         col_indices = np.where(np.any(nan_mask, axis=0))[0]

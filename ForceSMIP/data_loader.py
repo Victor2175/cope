@@ -8,6 +8,7 @@ VARIABLE_MAP = {
     'tasmax': ('monmaxtasmax', 'tasmax'),
     'tasmin': ('monmintasmin', 'tasmin'),
     'prmax': ('monmaxpr', 'pr'),
+    'mrso': ('mrso', 'mrso'),
     'zmta': ('zmta', 'ta'),
     'tas': ('tas', 'tas'),
     'tos': ('tos', 'tos'),
@@ -137,6 +138,8 @@ class ForceSMIPDataLoader:
             path_tmp = os.path.join(path, f'Omon/{variable_tmp}')
         if not os.path.exists(path_tmp):
             path_tmp = os.path.join(path, f'Aday/{variable_tmp}')
+        if not os.path.exists(path_tmp):
+            path_tmp = os.path.join(path, f'Lmon/{variable_tmp}')
         if not os.path.exists(path):
             raise FileNotFoundError(f"Test data path not found: {path}")
 

@@ -6,6 +6,8 @@ from typing import Optional, List, Tuple
 from sklearn.decomposition import PCA
 
 
+
+
 class ForceSMIPVisualizer:
     """Class for visualizing ForceSMIP results and comparisons."""
     
@@ -14,6 +16,11 @@ class ForceSMIPVisualizer:
         self.longitude = longitude
         self.latitude = latitude
         self.test_model_names = test_model_names
+        
+    def index_to_latlon(self,idx):
+        lat_idx = idx // self.longitude.shape[0]
+        lon_idx = idx %  self.longitude.shape[0]
+        return lat_idx, lon_idx
 
     def plot_principal_component(self, w: np.ndarray, 
                                 title: str = "Principal component of the weight matrix",
@@ -244,6 +251,83 @@ class ForceSMIPVisualizer:
         
         return fig
     
+
+
+    def plot_robinson_projection_weight_matrix(self, weight_matrix: np.ndarray, 
+                                    title: str = "Global Temperature Trend",
+                                    cmap: str = 'RdBu_r', 
+                                    vmin: float = None, 
+                                    vmax: float = None,
+                                    feat_idx: int = 0, 
+                                    central_longitude: float = 180) -> plt.Figure:
+        """
+        Plot data using Robinson projection.
+            
+        Args:
+            weight matrix: Trend data array of shape (n_runs, n_grid_points)
+            title: Plot title
+            cmap: Colormap name
+            vmin, vmax: Color scale limits
+            run_idx: Which run to plot
+            central_longitude: Longitude to center projection (180 for Pacific)
+                
+        Returns:
+            Matplotlib figure
+        """
+        # Reshape trend data to 2D grid
+        weight_2d = weight_matrix[feat_idx, :].reshape(self.latitude.shape[0], self.longitude.shape[0])
+
+        # Create meshgrid for plotting
+        lon_2d, lat_2d = np.meshgrid(self.longitude, self.latitude)
+
+        # Set color limits if not provided
+        if vmin is None or vmax is None:
+            vmax = np.nanmax(np.abs(weight_2d))
+            vmin = -vmax
+
+        print(f"Using vmin={vmin}, vmax={vmax} for colorbar")
+            
+        # Create figure with Robinson projection
+        fig = plt.figure(figsize=(15, 8))
+        ax = fig.add_subplot(111, projection=ccrs.Robinson(central_longitude=central_longitude))
+            
+        ax.set_global()
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
+        ax.add_feature(cfeature.BORDERS, linewidth=0.3)
+        ax.add_feature(cfeature.OCEAN, color='lightblue', alpha=0.3)
+        ax.add_feature(cfeature.LAND, color='lightgray', alpha=0.3)
+            
+        # Plot the data
+        levels = np.linspace(vmin, vmax, 20)
+        im = ax.contourf(lon_2d, lat_2d, weight_2d,
+                            levels, cmap=cmap,
+                            transform=ccrs.PlateCarree(), extend='both')
+
+        # highlight the location of idx_feat using a cross in the robinson projection
+
+        lat_idx, lon_idx = self.index_to_latlon(feat_idx)
+        print(f"Feature index {feat_idx} corresponds to lat index {lat_idx}, lon index {lon_idx}")
+        print(f"Feature coordinates: Latitude {self.latitude[lat_idx]}, Longitude {self.longitude[lon_idx]}")
+
+
+        ax.plot(self.longitude[lon_idx], self.latitude[lat_idx], 'kx',transform=ccrs.PlateCarree(), markersize=30, markeredgewidth=2)
+            
+        # Add gridlines
+        gl = ax.gridlines(draw_labels=True, alpha=0.3)
+        gl.top_labels = False
+        gl.right_labels = False
+            
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax, orientation='horizontal',
+                            pad=0.1, shrink=0.8, aspect=30)
+        cbar.set_label('Temperature Trend (°C/year)', fontsize=12)
+            
+        projection_type = "Pacific Centered" if central_longitude == 180 else "Atlantic Centered"
+        # plt.title(f'{title} - Model {self.test_model_names[run_idx]}\n(Robinson Projection - {projection_type})', fontsize=14, pad=20)
+        plt.tight_layout()
+            
+        return fig
+        
     def plot_time_series(self, data_dict: dict, lat_idx: int, lon_idx: int,
                         run_idx: int = 0, title: Optional[str] = None) -> plt.Figure:
         """
