@@ -8,14 +8,12 @@ import matplotlib.pyplot as plt
 # Add src to path
 sys.path.append(os.path.join(os.getcwd(), "ForceSMIP"))
 
-# Import our modules
-from data_loader import ForceSMIPDataLoader, yearly_average, compute_yearly_average_dict
-from preprocessing import (
-    merge_training_data, reshape_training_data, capture_nans,
-    apply_notnan_filter_complete,moving_average_smoothing
-)
-from algorithms import ridge_regression, LowRankSolver
-from forcesmip_pipeline import ForceSMIPPipeline
+# Use package imports instead:
+from ForceSMIP.data_loader import ForceSMIPDataLoader
+from ForceSMIP.preprocessing import yearly_average, compute_yearly_average_dict, merge_training_data, reshape_training_data, apply_notnan_filter_complete, capture_nans
+from ForceSMIP.algorithms import ridge_regression, LowRankSolver
+from ForceSMIP.evaluation import ForceSMIPEvaluator, compute_trends_from_data
+from ForceSMIP.visualization import ForceSMIPVisualizer, moving_average_smoothing
 from utils import to_xarray
 
 
@@ -157,8 +155,6 @@ from algorithms import cross_validation_lambda_optimization, cross_validation_la
 lambda_values_cv = [10.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
 rank_values_cv = [2, 5, 10, 20, 30, 50, 100]
 
-lambda_values_cv = [1000.0]
-rank_values_cv = [10]
 
 
 print("Performing cross-validation to optimize lambda for worst-case performance...")
